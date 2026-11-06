@@ -26,9 +26,9 @@ textarea{width:100%;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:
 .card{background:var(--panel);border:1px solid var(--borde);border-radius:10px;padding:14px;margin-bottom:14px}.card h3{margin:0 0 10px;font-size:15px}
 .card.warn{border-color:var(--warn)}.card.mal{border-color:var(--mal)}
 .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px}.grid2>.card{margin-bottom:0}.grid2{margin-bottom:14px}
-.tabla-w{overflow:auto;max-width:100%}.tabla{border-collapse:collapse;width:100%;font-size:13px}
-.tabla th{text-align:left;color:var(--tx2);font-weight:600;padding:7px 8px;border-bottom:1px solid var(--borde);white-space:nowrap;position:sticky;top:0;background:var(--panel)}
-.tabla td{padding:7px 8px;border-bottom:1px solid #222a37;vertical-align:top}.tabla tr.click{cursor:pointer}.tabla tr.click:hover td{background:var(--panel2)}
+.tabla-w{overflow:auto;max-width:100%;max-height:420px}.tabla{border-collapse:collapse;width:100%;font-size:12px}
+.tabla th{text-align:left;color:var(--tx2);font-weight:600;padding:4px 7px;font-size:11px;border-bottom:1px solid var(--borde);white-space:nowrap;position:sticky;top:0;background:var(--panel)}
+.tabla td{padding:3px 7px;border-bottom:1px solid #222a37;vertical-align:middle;white-space:nowrap;line-height:1.3}.tabla td.largo{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:380px;cursor:pointer}.tabla td.largo.abierto{white-space:normal;max-width:380px}.tabla .pill{padding:0 7px;font-size:11px}.tabla .mini{padding:1px 7px;font-size:11px}.tabla tr.click{cursor:pointer}.tabla tr.click:hover td{background:var(--panel2)}
 .pill{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;font-weight:600;white-space:nowrap}
 .pill.ok{background:#173a24;color:#7be09c}.pill.warn{background:#3d3210;color:#f2cb55}.pill.mal{background:#43201e;color:#ff9b94}.pill.crit{background:var(--crit);color:#fff}
 .barras{display:flex;flex-direction:column;gap:6px}.barra{display:grid;grid-template-columns:minmax(80px,38%) 1fr 48px;gap:8px;align-items:center;font-size:13px}

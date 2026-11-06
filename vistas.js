@@ -6,7 +6,7 @@ function tabla(cols, rows, opc) {
   opc = opc || {}; const max = opc.max || 150;
   if (!rows.length) return '<div class="vacio">Sin registros en este periodo</div>';
   const shown = rows.slice(0, max);
-  return `<div class="tabla-w"><table class="tabla"><thead><tr>${cols.map(c => `<th>${esc(c.t)}</th>`).join('')}</tr></thead><tbody>${shown.map((r, i) => `<tr ${opc.click ? `data-i="${i}" class="click"` : ''}>${cols.map(c => `<td>${c.h ? c.f(r) : esc(c.f(r))}</td>`).join('')}</tr>`).join('')}</tbody></table></div>${rows.length > max ? `<div class="nota">Mostrando ${max} de ${rows.length} registros. Use los filtros para acotar.</div>` : ''}`;
+  return `<div class="tabla-w"><table class="tabla"><thead><tr>${cols.map(c => `<th>${esc(c.t)}</th>`).join('')}</tr></thead><tbody>${shown.map((r, i) => `<tr ${opc.click ? `data-i="${i}" class="click"` : ''}>${cols.map(c => { const lg = /^(Descripci|Notas|Observ|Motivo)/.test(c.t) && !c.h; const t = c.h ? c.f(r) : esc(c.f(r)); return lg ? `<td class="largo" title="Clic para ver completo">${t}</td>` : `<td>${t}</td>`; }).join('')}</tr>`).join('')}</tbody></table></div>${rows.length > max ? `<div class="nota">Mostrando ${max} de ${rows.length} registros. Use los filtros para acotar.</div>` : ''}`;
 }
 const pill = (txt, nivel) => `<span class="pill ${nivel}">${esc(txt)}</span>`;
 const card = (titulo, cuerpo, extra) => `<section class="card ${extra || ''}"><h3>${esc(titulo)}</h3>${cuerpo}</section>`;
@@ -356,3 +356,5 @@ registrarVista({
     };
   }
 });
+
+document.addEventListener('click', e => { const td = e.target.closest && e.target.closest('td.largo'); if (td) td.classList.toggle('abierto'); });
