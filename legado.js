@@ -31,7 +31,7 @@
   function esOpLegado(o) { return !!(o && typeof o === 'object' && o.ubicacion && o.sem != null && o.anio != null && ('rondProg' in o || 'regProg' in o)); }
   function convOp(o) {
     return {
-      id: 'op_' + o.anio + '_' + o.sem + '_' + n(o.ubicacion).replace(/ /g, '_'), fecha: lunesISO(o.anio, o.sem), campo: campoLegado(o.ubicacion), punto: o.ubicacion,
+      id: 'op_' + o.anio + '_' + o.sem + '_' + n(o.ubicacion).replace(/ /g, '_') + (o._ownId ? '_' + String(o._ownId).slice(-6) : ''), fecha: lunesISO(o.anio, o.sem), campo: campoLegado(o.ubicacion), punto: o.ubicacion,
       rondinesProg: o.rondProg, rondinesReal: o.rondReal, accesosReg: o.acasReal, inocuidad: '', obs: o.accionRecomendada || '', raw: o, origen: 'legado'
     };
   }
