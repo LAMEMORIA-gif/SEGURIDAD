@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Seguridad La Memoria</title>
+<link rel="icon" href="icon-192.png">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="theme-color" content="#e08a4b">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div id="login" class="login"></div>
+<div id="app" style="display:none">
+  <aside id="lateral">
+    <div class="marca"><img src="icon-192.png" alt="" width="34" height="34"><div><b>Seguridad</b><small>La Memoria</small></div></div>
+    <nav id="nav"></nav>
+    <div class="pie-lat"><div id="quien"></div><button class="btn sec chico" id="salir">Cerrar sesión</button></div>
+  </aside>
+  <main>
+    <header class="top"><button id="menuBtn" class="btn sec chico" aria-label="Menú">☰</button><h2 id="vistaTitulo"></h2></header>
+    <div id="filtros" class="filtros"></div>
+    <div id="vista"></div>
+  </main>
+</div>
+<div id="toasts"></div>
+<script src="legado.js"></script>
+<script src="core.js"></script>
+<script src="vistas.js"></script>
+<script src="rol.js"></script>
+<script src="riesgo.js"></script>
+<script>
+document.getElementById('salir').onclick = () => mostrarLogin();
+document.getElementById('menuBtn').onclick = () => document.body.classList.toggle('menu-abierto');
+// orden del menú: se reordena según el grupo
+const ORDEN = ['General', 'Seguridad', 'Personal', 'Sistema'];
+VIEWS.sort((a, b) => ORDEN.indexOf(a.grupo) - ORDEN.indexOf(b.grupo));
+arrancar();
+</script>
+</body>
+</html>
