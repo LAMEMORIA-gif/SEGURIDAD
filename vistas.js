@@ -19,6 +19,15 @@ function nombresGuardias() {
 const pesoDe = i => (i.peso != null ? i.peso : ((getCatalogo().find(c => norm(c.nombre) === norm(i.problema)) || {}).peso || 1));
 const soloLectura = () => puedeEditar() ? '' : '<div class="nota">Su perfil es de solo lectura.</div>';
 
+const fotoID = a => a.fotoID ? `<img class="ine" src="${a.fotoID}" data-acc="${esc(a.id)}" loading="lazy" alt="ID" title="Clic para ampliar">` : '—';
+document.addEventListener('click', e => {
+  const im = e.target.closest && e.target.closest('img.ine'); if (!im) return;
+  const a = DATA.accesos.find(x => x.id === im.dataset.acc); if (!a) return;
+  const f = (t, x) => x || x === 0 ? `<tr><td>${t}</td><td>${esc(x)}</td></tr>` : '';
+  dialogo('Identificación · ' + (a.nombre || 'Visitante'), `<img src="${a.fotoID}" style="max-width:100%;max-height:60vh;border-radius:8px;display:block;margin:0 auto 10px"><table class="tabla"><tbody>${f('Tipo de ID', a.tipoID)}${f('Ingreso', fmtFH(a.horaIngreso))}${f('Salida', a.horaSalida ? fmtFH(a.horaSalida) : '—')}${f('Campo', normCampo(a.campo))}${f('Tipo de persona', a.tipoPersona)}${f('Empresa', a.empresaProcedencia)}${f('Motivo', a.motivoVisita)}${f('Visita a', a.areaVisita)}${f('Placas', a.placas)}${f('N.º económico', a.numEconomico)}${f('Gafete', a.gafeteNum)}${f('Acompañantes', a.numAcompanantes)}${f('Nota', a.nota)}${f('Confirmó', a.guardiaConfirma)}</tbody></table>`);
+  const x = document.querySelector('.overlay:last-of-type [data-x]'); if (x) x.textContent = 'Cerrar';
+});
+
 // ============ RESUMEN GERENCIAL ============
 registrarVista({
   id: 'resumen', titulo: 'Resumen gerencial', icono: '📊', grupo: 'General', render(el) {
@@ -106,10 +115,10 @@ registrarVista({
     const dur = ac.filter(a => a.horaSalida).map(a => tiempoDentroH(a) * 60);
     let h = '<div class="kpis">' + kpi(ac.length, 'Accesos en el periodo') + kpi(dentro.length, 'Dentro ahora') + kpi(exced.length, 'Tiempo excedido', exced.length ? 'mal' : 'ok') +
       kpi(restr.length, 'Lista restringida', restr.length ? 'mal' : 'ok') + kpi(dur.length ? Math.round(sum(dur) / dur.length) + ' min' : '—', 'Permanencia promedio') + '</div>';
-    if (dentro.length) h += card('Actualmente dentro (sin salida)', tabla([{ t: 'Ingreso', f: a => fmtFH(a.horaIngreso) }, { t: 'Nombre', f: a => a.nombre }, { t: 'Campo', f: a => normCampo(a.campo) }, { t: 'Motivo', f: a => a.motivoVisita || '—' }, { t: 'Visita a', f: a => a.areaVisita || '—' }, { t: 'Lleva', h: 1, f: a => pill(tiempoDentroH(a).toFixed(1) + ' h', accesoExcedido(a) ? 'mal' : 'ok') }], dentro.sort((a, b) => a.horaIngreso - b.horaIngreso)));
+    if (dentro.length) h += card('Actualmente dentro (sin salida)', tabla([{ t: 'Ingreso', f: a => fmtFH(a.horaIngreso) }, { t: 'Nombre', f: a => a.nombre }, { t: 'ID', h: 1, f: fotoID }, { t: 'Campo', f: a => normCampo(a.campo) }, { t: 'Motivo', f: a => a.motivoVisita || '—' }, { t: 'Visita a', f: a => a.areaVisita || '—' }, { t: 'Lleva', h: 1, f: a => pill(tiempoDentroH(a).toFixed(1) + ' h', accesoExcedido(a) ? 'mal' : 'ok') }], dentro.sort((a, b) => a.horaIngreso - b.horaIngreso)));
     h += '<div class="grid2">' + card('Accesos por campo', barras(groupCount(ac, a => normCampo(a.campo)), { color: COL.azul })) + card('Motivos de visita', barras(groupCount(ac, a => a.motivoVisita), { color: COL.naranja })) +
       card('Tipo de visitante', barras(groupCount(ac, a => a.tipoPersona), { color: COL.verde })) + card('Área / persona visitada', barras(groupCount(ac, a => a.areaVisita), { color: COL.gris })) + '</div>';
-    h += card('Bitácora de accesos', tabla([{ t: 'Ingreso', f: a => fmtFH(a.horaIngreso) }, { t: 'Salida', f: a => a.horaSalida ? fmtFH(a.horaSalida) : '—' }, { t: 'Nombre', f: a => a.nombre }, { t: 'Tipo', f: a => a.tipoPersona || '—' }, { t: 'Empresa', f: a => a.empresaProcedencia || '—' }, { t: 'Placas', f: a => a.placas || '—' }, { t: 'Campo', f: a => normCampo(a.campo) }, { t: 'Motivo', f: a => a.motivoVisita || '—' }, { t: 'Confirmó', f: a => a.guardiaConfirma || '—' }], ac));
+    h += card('Bitácora de accesos', tabla([{ t: 'Ingreso', f: a => fmtFH(a.horaIngreso) }, { t: 'Salida', f: a => a.horaSalida ? fmtFH(a.horaSalida) : '—' }, { t: 'Nombre', f: a => a.nombre }, { t: 'ID', h: 1, f: fotoID }, { t: 'Tipo', f: a => a.tipoPersona || '—' }, { t: 'Empresa', f: a => a.empresaProcedencia || '—' }, { t: 'Placas', f: a => a.placas || '—' }, { t: 'Campo', f: a => normCampo(a.campo) }, { t: 'Motivo', f: a => a.motivoVisita || '—' }, { t: 'Confirmó', f: a => a.guardiaConfirma || '—' }], ac));
     el.innerHTML = h;
   }
 });
