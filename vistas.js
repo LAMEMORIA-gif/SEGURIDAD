@@ -168,54 +168,84 @@ registrarVista({
   }
 });
 
-// ============ EVALUACIÓN DE DESEMPEÑO ============
-const PESOS_EVAL = { asistencia: .25, rondines: .25, controlAcceso: .20, equipo: .15, llamados: .15 };
-const puntajeLlamados = n => n <= 0 ? 5 : n === 1 ? 4 : n === 2 ? 3 : n === 3 ? 2 : 1;
-const puntajeAsist = n => n <= 0 ? 5 : n === 1 ? 4 : n === 2 ? 3 : n === 3 ? 2 : 1;
-function calcEval(e) {
-  const [y, m] = e.mes.split('-').map(Number); const d = new Date(y, m - 1, 1).getTime(), h = new Date(y, m, 0, 23, 59, 59).getTime();
-  const rs = DATA.rondines.filter(r => r.inicio >= d && r.inicio <= h && norm(r.guardia) === norm(e.guardia));
-  const cumpl = rs.length ? sum(rs, cumplimientoRondin) / rs.length : null;
-  const rondines = cumpl == null ? null : Math.round((1 + 4 * cumpl / 100) * 10) / 10;
-  const faltas = DATA.rh.filter(x => x.tipo === 'Inasistencia' && x.fecha >= d && x.fecha <= h && norm(x.persona) === norm(e.guardia)).length;
-  const asistencia = e.asistencia != null && e.asistencia !== '' ? +e.asistencia : puntajeAsist(faltas);
-  const comp = { asistencia, rondines, controlAcceso: +e.controlAcceso, equipo: +e.equipo, llamados: puntajeLlamados(+e.llamados || 0) };
-  let tot = 0, pes = 0; Object.keys(PESOS_EVAL).forEach(k => { if (comp[k] != null && !isNaN(comp[k])) { tot += comp[k] * PESOS_EVAL[k]; pes += PESOS_EVAL[k]; } });
-  return { comp, nota: pes ? Math.round(tot / pes * 100) / 100 : 0, rondinesN: rs.length, cumpl };
+// ============ DESEMPEÑO DE GUARDIAS (evaluación semanal, igual que el dashboard anterior) ============
+const CAMPOS_NUM_EV = ['asistencia', 'retardos', 'inasistencias', 'permisos', 'incapacidades', 'uniforme', 'imagen'];
+const SEV_IMPACTO = { Leve: 1, Moderada: 2, Grave: 3 };
+const clampEv = v => Math.min(5, Math.max(1, v));
+const semISO = ts => { const d = new Date(ts); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7)); const j = new Date(d.getFullYear(), 0, 4, 12); return { anio: d.getFullYear(), sem: 1 + Math.round(((d - j) / 864e5 - 3 + ((j.getDay() + 6) % 7)) / 7) }; };
+const nivelEv = c => c >= 4 ? 'BAJO' : c >= 3 ? 'MEDIO' : c >= 2 ? 'ALTO' : 'CRÍTICO';
+const claseNivel = n => n === 'BAJO' ? 'ok' : n === 'MEDIO' ? 'warn' : n === 'ALTO' ? 'mal' : 'crit';
+const manual = v => v !== undefined && v !== null && v !== '';
+function calcSemanal(r) {
+  const n = {}; CAMPOS_NUM_EV.forEach(f => n[f] = Number(r[f]) || 0);
+  const pctAsis = n.asistencia ? Math.max(0, (n.asistencia - n.retardos - n.inasistencias) / n.asistencia) : 0;
+  const imp = DATA.evaluaciones.filter(l => l.tipo === 'llamada' && norm(l.guardia) === norm(r.guardia) && l.sem === r.sem && (l.anio || r.anio) === r.anio).reduce((s, l) => s + (SEV_IMPACTO[l.severidad] || 1), 0);
+  const e = {
+    'Asistencia': manual(r._evalAsistencia) ? +r._evalAsistencia : clampEv(Math.round(1 + pctAsis * 4)),
+    'Control de acceso': manual(r._evalControlAcceso) ? +r._evalControlAcceso : 3,
+    'Trabajo en equipo': manual(r._evalEquipo) ? +r._evalEquipo : 3,
+    'Llamados de atención': manual(r._evalLlamados) ? +r._evalLlamados : clampEv(5 - imp)
+  };
+  const vals = Object.values(e); const calif = Math.round(vals.reduce((a, b) => a + b, 0) / 4 * 10) / 10;
+  const debil = Object.entries(e).sort((a, b) => a[1] - b[1])[0][0];
+  return { e, calif, nivel: nivelEv(calif), debil };
 }
 registrarVista({
   id: 'desempeno', titulo: 'Desempeño de guardias', icono: '⭐', grupo: 'Personal', render(el) {
-    const meses = Array.from(new Set(DATA.evaluaciones.map(e => e.mes))).sort().reverse();
-    const mes = el.dataset.mes || meses[0] || isoDia(Date.now()).slice(0, 7);
-    const evs = DATA.evaluaciones.filter(e => e.mes === mes).map(e => Object.assign({}, e, { r: calcEval(e) })).sort((a, b) => b.r.nota - a.r.nota);
-    const prom = evs.length ? Math.round(sum(evs, e => e.r.nota) / evs.length * 100) / 100 : 0;
-    let h = `<div class="barra-acc"><label>Mes <input type="month" id="evMes" value="${mes}"></label>${puedeEditar() ? '<button class="btn" id="nuevaEv">+ Evaluar guardia</button>' : ''}</div>`;
-    h += '<div class="kpis">' + kpi(evs.length, 'Guardias evaluados') + kpi(evs.length ? prom : '—', 'Promedio general (1-5)', evs.length ? semaforo(prom, 4, 3) : '') + kpi(evs.filter(e => e.r.nota < 3).length, 'Por debajo de 3.0', evs.some(e => e.r.nota < 3) ? 'mal' : 'ok') + '</div>';
-    h += '<div class="nota">Calificación 1-5 ponderada: asistencia 25% (automática desde RH si no se captura), rondines 25% (automática del cumplimiento del guardia), control de acceso 20%, trabajo en equipo 15% y llamados de atención 15% (0 llamados = 5).</div>';
-    h += card('Ranking del mes', tabla([{ t: '#', f: (e, i) => '' }].slice(0, 0).concat([
-      { t: 'Guardia', f: e => e.guardia }, { t: 'Asistencia', f: e => e.r.comp.asistencia }, { t: 'Rondines', f: e => e.r.comp.rondines == null ? 'sin datos' : e.r.comp.rondines + ' (' + e.r.rondinesN + ')' },
-      { t: 'Ctrl. acceso', f: e => e.r.comp.controlAcceso }, { t: 'Equipo', f: e => e.r.comp.equipo }, { t: 'Llamados', f: e => (e.llamados || 0) + ' → ' + e.r.comp.llamados },
-      { t: 'Calificación', h: 1, f: e => pill(e.r.nota.toFixed(2), semaforo(e.r.nota, 4, 3)) }, { t: '', h: 1, f: e => puedeEditar() ? `<button class="mini" data-del="${e.id}">Eliminar</button>` : '' }]), evs));
+    const recs = DATA.evaluaciones.filter(r => r.tipo === 'semanal' && enPeriodo(r.fecha) && enCampo(r.ubicacion)).map(r => Object.assign({}, r, { c: calcSemanal(r) }));
+    const llam = DATA.evaluaciones.filter(l => l.tipo === 'llamada' && enPeriodo(l.fecha) && (!F.campo || recs.some(r => norm(r.guardia) === norm(l.guardia)))).sort((a, b) => b.fecha - a.fecha);
+    const porG = {}; recs.forEach(r => { const k = norm(r.guardia); (porG[k] = porG[k] || { nombre: r.guardia, ubic: r.ubicacion, regs: [] }).regs.push(r); });
+    const gs = Object.values(porG).map(g => {
+      const cal = Math.round(sum(g.regs, r => r.c.calif) / g.regs.length * 10) / 10;
+      const cats = {}; g.regs.forEach(r => Object.entries(r.c.e).forEach(([k, v]) => { (cats[k] = cats[k] || []).push(v); }));
+      const debil = Object.entries(cats).map(([k, v]) => [k, sum(v) / v.length]).sort((a, b) => a[1] - b[1])[0][0];
+      const nll = llam.filter(l => norm(l.guardia) === norm(g.nombre)).length;
+      return { nombre: g.nombre, ubic: g.regs.slice().sort((a, b) => b.fecha - a.fecha)[0].ubicacion, sems: g.regs.length, cal, nivel: nivelEv(cal), debil, nll };
+    }).sort((a, b) => b.cal - a.cal);
+    const prom = gs.length ? Math.round(sum(gs, g => g.cal) / gs.length * 100) / 100 : 0;
+    const crit = gs.filter(g => g.cal < 3);
+    let h = '<div class="kpis">' + kpi(gs.length, 'Guardias evaluados', '', recs.length + ' evaluaciones semanales') + kpi(gs.length ? prom : '—', 'Calificación promedio (1-5)', gs.length ? semaforo(prom, 4, 3) : '') +
+      kpi(crit.length, 'Nivel alto o crítico (<3.0)', crit.length ? 'mal' : 'ok') + kpi(llam.length, 'Llamadas de atención', llam.length ? 'warn' : '') + '</div>';
+    h += puedeEditar() ? '<div class="barra-acc"><button class="btn" id="nuevaEv">+ Captura semanal</button><button class="btn sec" id="nuevaLl">🚩 Llamada de atención</button></div>' : soloLectura();
+    if (!recs.length) h += '<div class="card warn">No hay evaluaciones en este periodo. Cambie el filtro de Periodo a <b>Todo</b> o importe el archivo evaluacion_guardias_*.json.</div>';
+    h += '<div class="nota">Calificación 1-5 = promedio de Asistencia (del % de asistencia capturado), Control de acceso y Trabajo en equipo (manuales, 3 si no se califican) y Llamados de atención (5 menos Leve 1 / Moderada 2 / Grave 3). Nivel: Bajo ≥4, Medio ≥3, Alto ≥2, Crítico &lt;2.</div>';
+    if (crit.length) h += card('Guardias que requieren atención', '<ul class="alertas">' + crit.map(g => `<li class="${g.cal < 2 ? 'mal' : 'warn'}"><b>${esc(g.nombre)}</b> (${esc(g.ubic)}) · ${g.cal} · ${g.nivel} — Reforzar ${esc(g.debil)}${g.nll ? '; ' + g.nll + ' llamada(s) de atención' : ''}.</li>`).join('') + '</ul>');
+    const sem = {}; recs.forEach(r => { const k = r.fecha; (sem[k] = sem[k] || []).push(r.c.calif); }); const ks = Object.keys(sem).map(Number).sort((a, b) => a - b);
+    const porCampo = {}; recs.forEach(r => { const k = normCampo(r.ubicacion); (porCampo[k] = porCampo[k] || []).push(r.c.calif); });
+    h += '<div class="grid2">' + card('Calificación promedio por semana', lineas([{ nombre: 'Promedio', color: COL.azul, valores: ks.map(k => Math.round(sum(sem[k]) / sem[k].length * 10) / 10) }], ks.map(k => fmtFecha(k).slice(0, 5)), { max: 5 })) +
+      card('Calificación por campo', barras(Object.fromEntries(Object.entries(porCampo).map(([k, v]) => [k, Math.round(sum(v) / v.length * 10) / 10])), { color: COL.verde })) + '</div>';
+    h += card('Ranking de guardias', tabla([{ t: 'Guardia', f: g => g.nombre }, { t: 'Ubicación', f: g => g.ubic }, { t: 'Semanas', f: g => g.sems }, { t: 'Calificación', h: 1, f: g => pill(g.cal.toFixed(1), claseNivel(g.nivel)) }, { t: 'Nivel', f: g => g.nivel }, { t: 'Área débil', f: g => g.debil }, { t: '🚩', f: g => g.nll || '' }], gs, { max: 200 }));
+    h += card('Llamadas de atención', tabla([{ t: 'Fecha', f: l => fmtFecha(l.fecha) }, { t: 'Guardia', f: l => l.guardia }, { t: 'Severidad', h: 1, f: l => pill(l.severidad, l.severidad === 'Grave' ? 'mal' : l.severidad === 'Moderada' ? 'warn' : 'ok') }, { t: 'Motivo', f: l => l.motivo || '' }, { t: '', h: 1, f: l => puedeEditar() ? `<button class="mini" data-del="${l.id}">Eliminar</button>` : '' }], llam));
     el.innerHTML = h;
-    $('#evMes', el).onchange = e => { el.dataset.mes = e.target.value; renderApp2(el); };
-    $$('[data-del]', el).forEach(b => b.onclick = async () => { if (confirm('¿Eliminar esta evaluación?')) { await dbDel('evaluaciones', b.dataset.del); renderApp(); } });
+    $$('[data-del]', el).forEach(b => b.onclick = async () => { if (confirm('¿Eliminar esta llamada de atención?')) { await dbDel('evaluaciones', b.dataset.del); renderApp(); } });
+    const dl = `<datalist id="dlGu">${nombresGuardias().map(g => `<option value="${esc(g)}">`).join('')}</datalist>`;
     const nb = $('#nuevaEv', el);
     if (nb) nb.onclick = () => {
-      const sel = n => `<select id="${n}">${[5, 4, 3, 2, 1].map(v => `<option>${v}</option>`).join('')}</select>`;
-      dialogo('Evaluar guardia · ' + mes, `<label>Guardia<input id="eG" list="dlG2" placeholder="Nombre"><datalist id="dlG2">${nombresGuardias().map(g => `<option value="${esc(g)}">`).join('')}</datalist></label>
-        <label>Asistencia (vacío = automático desde RH)<select id="eA"><option value="">Automática</option>${[5, 4, 3, 2, 1].map(v => `<option>${v}</option>`).join('')}</select></label>
-        <label>Control de acceso (1-5)${sel('eCA')}</label><label>Trabajo en equipo (1-5)${sel('eEq')}</label>
-        <label>Llamados de atención en el mes<input type="number" id="eLl" min="0" value="0"></label><label>Notas<textarea id="eN" rows="2"></textarea></label>`,
+      const s5 = (id, vacio) => `<select id="${id}">${vacio ? '<option value="">' + vacio + '</option>' : ''}${[5, 4, 3, 2, 1].map(v => `<option>${v}</option>`).join('')}</select>`;
+      const w = semISO(Date.now() - 7 * 864e5);
+      dialogo('Captura semanal de un guardia', `${dl}<label>Guardia<input id="eG" list="dlGu"></label><label>Ubicación<select id="eU">${nombresCampos().map(c => `<option>${esc(c)}</option>`).join('')}</select></label>
+        <label>Año<input type="number" id="eAn" value="${w.anio}"></label><label>Semana (1-53)<input type="number" id="eSe" min="1" max="53" value="${w.sem}"></label>
+        <label>Días programados (asistencia)<input type="number" id="eAs" min="0" value="7"></label><label>Retardos<input type="number" id="eRe" min="0" value="0"></label><label>Inasistencias<input type="number" id="eIn" min="0" value="0"></label>
+        <label>Permisos<input type="number" id="ePe" min="0" value="0"></label><label>Incapacidades<input type="number" id="eIc" min="0" value="0"></label><label>Días con uniforme completo<input type="number" id="eUn" min="0" value="7"></label><label>Días con buena imagen<input type="number" id="eIm" min="0" value="7"></label>
+        <label>Control de acceso (1-5, obligatorio)${s5('eCA')}</label><label>Trabajo en equipo (1-5, opcional)${s5('eEq', 'Neutral (3)')}</label>`,
         async d => {
           const g = $('#eG', d).value.trim(); if (!g) { toast('Escriba el nombre del guardia', 'mal'); return false; }
-          const ex = DATA.evaluaciones.find(e => e.mes === mes && norm(e.guardia) === norm(g));
-          await dbPut('evaluaciones', { id: ex ? ex.id : undefined, mes, guardia: g, asistencia: $('#eA', d).value, controlAcceso: +$('#eCA', d).value, equipo: +$('#eEq', d).value, llamados: +$('#eLl', d).value, notas: $('#eN', d).value.trim() });
-          toast('Evaluación guardada'); el.dataset.mes = mes; renderApp2(el);
+          const anio = +$('#eAn', d).value, sem = +$('#eSe', d).value;
+          const ex = DATA.evaluaciones.find(x => x.tipo === 'semanal' && norm(x.guardia) === norm(g) && x.sem === sem && x.anio === anio);
+          await dbPut('evaluaciones', { id: ex ? ex.id : undefined, tipo: 'semanal', guardia: g, ubicacion: $('#eU', d).value, anio, sem, fecha: LEGADO.lunesISO(anio, sem), asistencia: +$('#eAs', d).value, retardos: +$('#eRe', d).value, inasistencias: +$('#eIn', d).value, permisos: +$('#ePe', d).value, incapacidades: +$('#eIc', d).value, uniforme: +$('#eUn', d).value, imagen: +$('#eIm', d).value, _evalControlAcceso: $('#eCA', d).value, _evalEquipo: $('#eEq', d).value });
+          toast('Evaluación guardada'); renderApp();
         });
     };
+    const nl = $('#nuevaLl', el);
+    if (nl) nl.onclick = () => dialogo('Llamada de atención', `${dl}<label>Guardia<input id="lG" list="dlGu"></label><label>Fecha<input type="date" id="lF" value="${isoDia(Date.now())}"></label><label>Severidad<select id="lS"><option>Leve</option><option>Moderada</option><option>Grave</option></select></label><label>Motivo<input id="lM" placeholder="Ej. abandono de puesto, uso de celular en servicio"></label>`,
+      async d => {
+        const g = $('#lG', d).value.trim(), m = $('#lM', d).value.trim(); if (!g || !m) { toast('Escriba guardia y motivo', 'mal'); return false; }
+        const ts = fromISO($('#lF', d).value) + 12 * 36e5, w = semISO(ts);
+        await dbPut('evaluaciones', { tipo: 'llamada', guardia: g, fecha: ts, anio: w.anio, sem: w.sem, severidad: $('#lS', d).value, motivo: m });
+        toast('Llamada registrada'); renderApp();
+      });
   }
 });
-function renderApp2(el) { const m = el.dataset.mes; renderApp(); const c = $('#vista'); if (m) { c.dataset.mes = m; const v = VIEWS.find(x => x.id === VISTA_ACTUAL); v.render(c); } }
 
 // ============ CONTROL OPERATIVO DE CAMPO ============
 const lunesDe = ts => { const d = new Date(ts); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d.getTime(); };

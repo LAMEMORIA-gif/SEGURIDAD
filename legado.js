@@ -46,5 +46,22 @@
     return out;
   }
   function isoDia0(ts) { const d = new Date(ts); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
-  g.LEGADO = { campoLegado, deptoLegado, esIncLegado, convInc, esOpLegado, convOp, convArchivoIncidencias, lunesISO };
+
+  const NUM_EV = ['asistencia', 'retardos', 'inasistencias', 'permisos', 'incapacidades', 'uniforme', 'imagen'];
+  function convEval(r, edit) {
+    const x = Object.assign({}, r, edit || {}); const anio = x.anio || 2026, o = {
+      id: 'ev_' + (x._ownId || ('n' + x.num + '_' + anio)), tipo: 'semanal', guardia: String(x.guardia || '').trim(), ubicacion: x.ubicacion || '', anio, sem: x.sem, fecha: lunesISO(anio, x.sem),
+      _evalAsistencia: x._evalAsistencia, _evalControlAcceso: x._evalControlAcceso, _evalEquipo: x._evalEquipo, _evalLlamados: x._evalLlamados, origen: 'legado'
+    };
+    NUM_EV.forEach(f => o[f] = Number(x[f]) || 0); return o;
+  }
+  function convLlamada(l) {
+    const t = diaTs(l.fecha); const y = new Date(t).getFullYear();
+    return { id: l.id || ('llam_' + t + '_' + String(l.guardia).length), tipo: 'llamada', guardia: String(l.guardia || '').trim(), fecha: t, anio: y, sem: l.sem, severidad: l.severidad || 'Leve', motivo: l.motivo || '', obs: l.obs || '', origen: 'legado' };
+  }
+  function convEventoPlantilla(e) {
+    if (e.tipo !== 'alta' && e.tipo !== 'baja') return null;
+    return { id: 'rh_pl_' + e.ts, tipo: e.tipo === 'alta' ? 'Alta' : 'Baja', persona: String(e.guardia || '').trim(), campo: e.ubicacion ? campoLegado(e.ubicacion) : '', depto: 'SEGURIDAD', fecha: e.fecha ? diaTs(e.fecha) : e.ts, notas: [e.motivo, e.obs].filter(Boolean).join(' · '), origen: 'legado' };
+  }
+  g.LEGADO = { convEval, convLlamada, convEventoPlantilla, campoLegado, deptoLegado, esIncLegado, convInc, esOpLegado, convOp, convArchivoIncidencias, lunesISO };
 })(typeof window !== 'undefined' ? window : globalThis);
