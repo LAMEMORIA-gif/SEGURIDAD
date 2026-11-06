@@ -63,5 +63,19 @@
     if (e.tipo !== 'alta' && e.tipo !== 'baja') return null;
     return { id: 'rh_pl_' + e.ts, tipo: e.tipo === 'alta' ? 'Alta' : 'Baja', persona: String(e.guardia || '').trim(), campo: e.ubicacion ? campoLegado(e.ubicacion) : '', depto: 'SEGURIDAD', fecha: e.fecha ? diaTs(e.fecha) : e.ts, notas: [e.motivo, e.obs].filter(Boolean).join(' · '), origen: 'legado' };
   }
-  g.LEGADO = { convEval, convLlamada, convEventoPlantilla, campoLegado, deptoLegado, esIncLegado, convInc, esOpLegado, convOp, convArchivoIncidencias, lunesISO };
+  // --- RH_Control_Personal: exportaciones de inasistencias, vacaciones y plantilla (altas/bajas) ---
+  const esFaltaRH = o => !!(o && o.nombre && o.fecha && o.motivo && o.departamento !== undefined && !o.fechaInicio);
+  const esVacRH = o => !!(o && o.nombre && o.fechaInicio && o.fechaFin);
+  const claveRH = r => r.tipo === 'Vacaciones' ? ['V', n(r.persona), diaTs(new Date(r.fecha).toISOString().slice(0, 10)), r.fechaFin ? diaTs(new Date(r.fechaFin).toISOString().slice(0, 10)) : ''].join('|') : r.tipo === 'Inasistencia' ? ['F', n(r.persona), new Date(r.fecha).toISOString().slice(0, 10), n(String(r.notas || '').split(' · ')[0])].join('|') : null;
+  function convFaltaRH(o) {
+    return { id: 'rh_f_' + n(o.nombre).replace(/ /g, '') + '_' + o.fecha + '_' + n(o.motivo).replace(/ /g, ''), tipo: 'Inasistencia', persona: o.nombre, campo: '', depto: o.departamento || 'SEGURIDAD', fecha: diaTs(o.fecha), notas: (o.motivo || '') + (o.causa ? ' · ' + o.causa : ''), origen: 'legado' };
+  }
+  function convVacRH(o) {
+    return { id: 'rh_v_' + n(o.nombre).replace(/ /g, '') + '_' + o.fechaInicio + '_' + o.fechaFin, tipo: 'Vacaciones', persona: o.nombre, campo: '', depto: o.departamento || 'SEGURIDAD', fecha: diaTs(o.fechaInicio), fechaFin: diaTs(o.fechaFin), notas: '', origen: 'legado' };
+  }
+  function convEventoRH(e) {
+    if (e.tipo !== 'alta' && e.tipo !== 'baja') return null;
+    return { id: 'rh_pl_' + e.ts, tipo: e.tipo === 'alta' ? 'Alta' : 'Baja', persona: String(e.empleado || '').trim(), campo: '', depto: e.departamento || 'SEGURIDAD', fecha: e.fecha ? diaTs(e.fecha) : e.ts, notas: [e.motivo, e.obs].filter(Boolean).join(' · '), origen: 'legado' };
+  }
+  g.LEGADO = { esFaltaRH, esVacRH, claveRH, convFaltaRH, convVacRH, convEventoRH, convEval, convLlamada, convEventoPlantilla, campoLegado, deptoLegado, esIncLegado, convInc, esOpLegado, convOp, convArchivoIncidencias, lunesISO };
 })(typeof window !== 'undefined' ? window : globalThis);

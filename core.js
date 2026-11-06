@@ -231,7 +231,7 @@ const semaforo = (v, verde, amar) => v >= verde ? 'ok' : v >= amar ? 'warn' : 'm
 
 // ---------- importación de archivos JSON de las apps y paneles ----------
 async function importarArchivos(files) {
-  const cuenta = { desempeno: 0, rhPlantilla: 0, operativo: 0, rondines: 0, accesos: 0, incidencias: 0, otros: 0, error: 0, duplicados: 0 };
+  const cuenta = { rhMov: 0, desempeno: 0, rhPlantilla: 0, operativo: 0, rondines: 0, accesos: 0, incidencias: 0, otros: 0, error: 0, duplicados: 0 };
   const lotes = { rondines: [], accesos: [], incidencias: [], operativo: [] };
   const vistos = { operativo: new Set(), rondines: new Set(DATA.rondines.map(x => x.id)), accesos: new Set(DATA.accesos.map(x => x.id)), incidencias: new Set(DATA.incidencias.map(x => x.id)) };
   const clasifica = o => {
@@ -256,12 +256,22 @@ async function importarArchivos(files) {
         const ed = data.ediciones || {}, lotesDesemp = [];
         (data.capturas_nuevas || []).forEach(r => lotesDesemp.push(LEGADO.convEval(r, ed['own:' + r._ownId])));
         (data.llamadas_atencion || []).forEach(l => lotesDesemp.push(LEGADO.convLlamada(l)));
-        const rhNuevos = (data.plantilla_eventos || []).map(LEGADO.convEventoPlantilla).filter(Boolean);
+        const rhNuevos = (data.plantilla_eventos || []).map(e => e && e.empleado ? LEGADO.convEventoRH(e) : LEGADO.convEventoPlantilla(e)).filter(Boolean);
         if (lotesDesemp.length) await dbPutMany('evaluaciones', lotesDesemp);
         if (rhNuevos.length) await dbPutMany('rh', rhNuevos);
         cuenta.desempeno += lotesDesemp.length; cuenta.rhPlantilla += rhNuevos.length; continue;
       }
       const lista = Array.isArray(data) ? data : [data];
+      if (lista.length && lista.every(o => LEGADO.esFaltaRH(o) || LEGADO.esVacRH(o))) {
+        const claves = new Set(DATA.rh.map(LEGADO.claveRH).filter(Boolean)), nuevosRH = [];
+        lista.forEach(o => {
+          const r = LEGADO.esVacRH(o) ? LEGADO.convVacRH(o) : LEGADO.convFaltaRH(o), k = LEGADO.claveRH(r);
+          if (claves.has(k)) { cuenta.duplicados++; return; }
+          claves.add(k); nuevosRH.push(r); cuenta.rhMov++;
+        });
+        if (nuevosRH.length) await dbPutMany('rh', nuevosRH);
+        continue;
+      }
       lista.forEach(o => {
         let t = clasifica(o); if (!t) { cuenta.error++; return; }
         if (t === 'incidencias_legado') { o = LEGADO.convInc(o); t = 'incidencias'; }
@@ -280,7 +290,7 @@ async function importarArchivos(files) {
 function resumenImport(c) {
   const p = [];
   if (c.rondines) p.push(c.rondines + ' rondín(es)'); if (c.accesos) p.push(c.accesos + ' acceso(s)');
-  if (c.incidencias) p.push(c.incidencias + ' incidencia(s)'); if (c.desempeno) p.push(c.desempeno + ' registro(s) de desempeño'); if (c.rhPlantilla) p.push(c.rhPlantilla + ' alta(s)/baja(s) de plantilla'); if (c.operativo > 0) p.push(c.operativo + ' captura(s) operativa(s)'); if (c.otros) p.push(c.otros + ' respaldo(s) completo(s)');
+  if (c.incidencias) p.push(c.incidencias + ' incidencia(s)'); if (c.desempeno) p.push(c.desempeno + ' registro(s) de desempeño'); if (c.rhMov) p.push(c.rhMov + ' movimiento(s) de RH'); if (c.rhPlantilla) p.push(c.rhPlantilla + ' alta(s)/baja(s) de plantilla'); if (c.operativo > 0) p.push(c.operativo + ' captura(s) operativa(s)'); if (c.otros) p.push(c.otros + ' respaldo(s) completo(s)');
   let t = p.length ? 'Importado: ' + p.join(', ') + '.' : 'No se importó nada nuevo.';
   if (c.duplicados) t += ' ' + c.duplicados + ' ya existían.';
   if (c.error) t += ' ' + c.error + ' archivo(s)/registro(s) no reconocido(s).';
