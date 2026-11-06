@@ -38,13 +38,14 @@ registrarVista({
       kpi(ac.length, 'Accesos registrados', '', dentro.length + ' dentro ahora') +
       kpi(exced.length, 'Visitas con tiempo excedido', exced.length ? 'mal' : 'ok') +
       kpi(inc.length, 'Incidencias', graves.length ? 'warn' : '', graves.length + ' graves (peso ≥4)') +
-      kpi(rh.filter(x => x.tipo === 'Inasistencia').length, 'Inasistencias (RH)', '') + '</div>';
+      kpi(rh.filter(x => x.tipo === 'Inasistencia').length, 'Inasistencias (RH)', '') + kpisApoyo(inc) + '</div>';
     // alertas
     const al = [];
     falt.forEach(f => al.push(['mal', `Sin rondín en 7 días: ${f.campo} · turno ${f.turno} (tenía ${f.historico} rondines previos). Sin evidencia ante robo o reclamo de seguro.`]));
     exced.slice(0, 8).forEach(a => al.push(['warn', `${a.nombre || 'Visitante'} lleva ${tiempoDentroH(a).toFixed(1)} h dentro en ${normCampo(a.campo)} sin registrar salida.`]));
     restr.slice(0, 5).forEach(a => al.push(['mal', `Ingreso de persona/vehículo en lista restringida: ${a.nombre} (${fmtFH(a.horaIngreso)}).`]));
     graves.slice(0, 6).forEach(i => al.push(['mal', `Incidencia grave: ${i.problema} · ${i.campo} / ${i.depto || '—'} (${fmtFecha(i.fecha)}).`]));
+    { const ra = resumenApoyo(inc); if (ra.pct >= 10) al.push(['warn', `Intervención de la autoridad: ${textoApoyo(ra)}`]); }
     riesgos.filter(r => r.nivel === 'Alto' || r.nivel === 'Crítico').forEach(r => al.push([r.nivel === 'Crítico' ? 'mal' : 'warn', `Riesgo ${r.nivel.toLowerCase()} en ${r.campo} (${r.puntos}/100).`]));
     h += card('Alertas que requieren atención', al.length ? '<ul class="alertas">' + al.map(a => `<li class="${a[0]}">${esc(a[1])}</li>`).join('') + '</ul>' : '<div class="vacio ok">Sin alertas en este periodo ✔</div>');
     // tabla por campo
@@ -56,6 +57,7 @@ registrarVista({
     ], filas));
     h += '<div class="grid2">' + card('Incidencias por campo', barras(groupCount(inc, i => i.campo), { color: COL.naranja })) +
       card('Accesos por campo', barras(groupCount(ac, a => normCampo(a.campo)), { color: COL.azul })) + '</div>';
+    h += cardApoyoResumen(inc, true);
     el.innerHTML = h;
   }
 });
@@ -117,11 +119,12 @@ registrarVista({
   id: 'incidencias', titulo: 'Incidencias', icono: '⚠️', grupo: 'Seguridad', render(el) {
     const inc = V.incidencias().sort((a, b) => b.fecha - a.fecha);
     const graves = inc.filter(i => pesoDe(i) >= 4);
-    let h = '<div class="kpis">' + kpi(inc.length, 'Incidencias') + kpi(graves.length, 'Graves (peso ≥4)', graves.length ? 'mal' : 'ok') + kpi(sum(inc, pesoDe), 'Puntos de severidad') + kpi(Object.keys(groupCount(inc, i => i.depto)).length, 'Departamentos con incidencias') + '</div>';
+    let h = '<div class="kpis">' + kpi(inc.length, 'Incidencias') + kpi(graves.length, 'Graves (peso ≥4)', graves.length ? 'mal' : 'ok') + kpi(sum(inc, pesoDe), 'Puntos de severidad') + kpi(Object.keys(groupCount(inc, i => i.depto)).length, 'Departamentos con incidencias') + kpisApoyo(inc) + '</div>';
     if (puedeEditar()) h += `<div class="barra-acc"><button class="btn" id="nuevaInc">+ Registrar incidencia</button></div>`; else h += soloLectura();
     h += '<div class="grid2">' + card('Por campo', barras(groupCount(inc, i => i.campo), { color: COL.naranja })) + card('Por catálogo de problema', barras(groupCount(inc, i => i.problema), { color: COL.rojo })) +
       card('Por departamento', barras(groupCount(inc, i => i.depto), { color: COL.azul })) + card('Severidad por campo (puntos)', barras(inc.reduce((m, i) => { m[i.campo] = (m[i.campo] || 0) + pesoDe(i); return m; }, {}), { color: COL.rojo })) + '</div>';
-    h += card('Registro de incidencias', tabla([{ t: 'Fecha', f: i => fmtFecha(i.fecha) }, { t: 'Campo', f: i => i.campo }, { t: 'Departamento', f: i => i.depto || '—' }, { t: 'Problema', f: i => i.problema }, { t: 'Peso', h: 1, f: i => pill(pesoDe(i), pesoDe(i) >= 4 ? 'mal' : pesoDe(i) >= 3 ? 'warn' : 'ok') }, { t: 'Descripción', f: i => i.descripcion || '' }, { t: '', h: 1, f: i => puedeEditar() ? `<button class="mini" data-del="${i.id}">Eliminar</button>` : '' }], inc));
+    h += cardApoyoResumen(inc, true);
+    h += card('Registro de incidencias', tabla([{ t: 'Fecha', f: i => fmtFecha(i.fecha) }, { t: 'Campo', f: i => i.campo }, { t: 'Departamento', f: i => i.depto || '—' }, { t: 'Problema', f: i => i.problema }, { t: 'Peso', h: 1, f: i => pill(pesoDe(i), pesoDe(i) >= 4 ? 'mal' : pesoDe(i) >= 3 ? 'warn' : 'ok') }, { t: 'Autoridad', f: i => { const x = apoyoDe(i); return x ? AUT_ETQ[x.ap] : '—'; } }, { t: 'Descripción', f: i => i.descripcion || '' }, { t: '', h: 1, f: i => puedeEditar() ? `<button class="mini" data-del="${i.id}">Eliminar</button>` : '' }], inc));
     el.innerHTML = h;
     $$('[data-del]', el).forEach(b => b.onclick = async () => { if (confirm('¿Eliminar esta incidencia?')) { await dbDel('incidencias', b.dataset.del); renderApp(); } });
     const nb = $('#nuevaInc', el);
@@ -130,10 +133,11 @@ registrarVista({
       <label>Campo<select id="iC">${nombresCampos().map(c => `<option>${esc(c)}</option>`).join('')}</select></label>
       <label>Departamento<select id="iD">${getDeptos().map(c => `<option>${esc(c)}</option>`).join('')}</select></label>
       <label>Catálogo de problema<select id="iP">${getCatalogo().map(c => `<option value="${esc(c.nombre)}">${esc(c.nombre)} (peso ${c.peso})</option>`).join('')}</select></label>
-      <label>Descripción<textarea id="iDesc" rows="3"></textarea></label><label>Acción tomada<textarea id="iAcc" rows="2"></textarea></label>`,
+      <label>Descripción<textarea id="iDesc" rows="3"></textarea></label><label>Acción tomada<textarea id="iAcc" rows="2"></textarea></label>
+      <label>Apoyo de la autoridad<select id="iAp"><option value="">Detectar automáticamente</option><option value="N">Sin apoyo de la autoridad</option><option value="M">Policía municipal</option><option value="G">Guardia civil estatal</option><option value="MG">Policía municipal y guardia civil</option></select></label>`,
       async d => {
         const p = $('#iP', d).value;
-        await dbPut('incidencias', { fecha: fromISO($('#iF', d).value) + 12 * 36e5, campo: $('#iC', d).value, depto: $('#iD', d).value, problema: p, peso: (getCatalogo().find(c => c.nombre === p) || {}).peso || 1, descripcion: $('#iDesc', d).value.trim(), accion: $('#iAcc', d).value.trim(), por: SESION.nombre });
+        await dbPut('incidencias', { fecha: fromISO($('#iF', d).value) + 12 * 36e5, campo: $('#iC', d).value, depto: $('#iD', d).value, problema: p, peso: (getCatalogo().find(c => c.nombre === p) || {}).peso || 1, descripcion: $('#iDesc', d).value.trim(), accion: $('#iAcc', d).value.trim(), apoyoManual: $('#iAp', d).value, por: SESION.nombre });
         toast('Incidencia registrada'); renderApp();
       });
   }

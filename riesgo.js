@@ -70,7 +70,7 @@ registrarVista({
     hh += `<div class="informe-t"><h2>Análisis de riesgo · Rancho Agrícola La Memoria</h2><p>Periodo: ${esc(etiquetaPeriodo())}${F.campo ? ' · Campo: ' + esc(F.campo) : ''}</p></div>`;
     hh += '<div class="kpis">' + kpi(glob.puntos, 'Índice general de riesgo', glob.nivelClase, glob.nivel + (globPrev ? ' · antes: ' + globPrev.puntos : '')) +
       kpi(vis.reduce((s, r) => s + r.incidencias, 0), 'Incidencias', '', sum(vis, r => r.graves) + ' graves') + kpi(sum(vis, r => r.huecos.length), 'Huecos de rondines', sum(vis, r => r.huecos.length) ? 'mal' : 'ok') +
-      kpi(sum(vis, r => r.exced + r.restr), 'Alertas de acceso', sum(vis, r => r.exced + r.restr) ? 'warn' : 'ok') + '</div>';
+      kpi(sum(vis, r => r.exced + r.restr), 'Alertas de acceso', sum(vis, r => r.exced + r.restr) ? 'warn' : 'ok') + kpisApoyo(V.incidencias()) + '</div>';
     hh += card('Índice de riesgo por campo', tabla([
       { t: 'Campo', f: r => r.campo }, { t: 'Riesgo', h: 1, f: r => pill(r.puntos + ' · ' + r.nivel, r.clase) }, { t: 'Cambio', f: delta },
       ...Object.keys(ETQ_COMP).map(k => ({ t: ETQ_COMP[k], h: 1, f: r => r.comp[k] == null ? '<span class="nota">sin datos</span>' : pill(Math.round(r.comp[k]), nivelRiesgo(r.comp[k])[1]) })),
@@ -81,6 +81,7 @@ registrarVista({
     const ks = Object.keys(semanas).sort();
     hh += '<div class="grid2">' + card('Severidad de incidencias por semana (puntos)', lineas([{ nombre: 'Puntos', color: COL.rojo, valores: ks.map(k => semanas[k]) }], ks.map(k => k.slice(8) + '/' + k.slice(5, 7)))) +
       card('Severidad por departamento (puntos)', barras(vis.flatMap(r => r.incList).reduce((m, i) => { const k = i.depto || 'Sin especificar'; m[k] = (m[k] || 0) + pesoDe(i); return m; }, {}), { color: COL.naranja })) + '</div>';
+    { const inc = V.incidencias(), ra = resumenApoyo(inc); hh += cardApoyoResumen(inc, false) + (ra.total ? card('Intervenciones de la autoridad por campo', tabla([{ t: 'Campo', f: x => x.campo }, { t: 'Incidencias', f: x => x.incidencias }, { t: 'Con apoyo', f: x => x.apoyos }, { t: 'Municipal', f: x => x.municipal }, { t: 'Guardia civil', f: x => x.guardia }, { t: '% incid.', f: x => x.pct + ' %' }], ra.porCampo)) + card('Últimas intervenciones', tablaRegistroApoyo({ lista: ra.lista.slice(0, 15) })) : '') + (ra.pct >= 10 ? `<div class="nota"><b>Observación:</b> ${esc(ra.pct)} % de las incidencias requirió a la policía municipal o a la guardia civil estatal; conviene reforzar la prevención y la coordinación con la autoridad en los campos con más intervenciones.</div>` : ''); }
     hh += card('Propuestas de mejora según el riesgo', vis.filter(r => r.puntos > 0 || r.incidencias || r.rondines).sort((a, b) => b.puntos - a.puntos).map(r => `<div class="prop"><h4>${esc(r.campo)} ${pill(r.puntos + ' · ' + r.nivel, r.clase)}</h4><ul>${sugerencias(r).map(s => `<li>${esc(s)}</li>`).join('')}</ul></div>`).join('') || '<div class="vacio">Sin datos suficientes en este periodo</div>');
     hh += '</div>';
     el.innerHTML = hh;
