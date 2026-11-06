@@ -52,7 +52,7 @@ table.rol{font-size:11px}table.rol th.dia{text-align:center;padding:4px 2px;min-
 .c-m{background:#1d3a5f;color:#9cc4ff}.c-n{background:#2c2552;color:#c2b5ff}.c-d{background:#3a3a3a;color:#aaa}td.nm.click{cursor:pointer;text-decoration:underline dotted}
 .informe-t h2{margin:0}.informe-t p{margin:2px 0 12px;color:var(--tx2)}
 @media(max-width:820px){#lateral{position:fixed;z-index:40;left:-240px;transition:left .2s;width:230px}.menu-abierto #lateral{left:0}#menuBtn{display:inline-block}main{padding:12px}.per-et{margin-left:0;width:100%}}
-@media print{
+@media print{details.mas>*{display:block}
   body{background:#fff;color:#000}#lateral,.filtros,.top,.barra-acc,#toasts,#menuBtn{display:none!important}main{padding:0}
   .card,.kpi{background:#fff;border-color:#bbb;break-inside:avoid;color:#000}.k-e,.k-s,.nota,.b-et,.tabla th{color:#444}.tabla th{background:#fff}.tabla td{border-color:#ddd}
   .b-pista{background:#eee}.pill.ok{background:#d6f0de;color:#0d5c2a}.pill.warn{background:#fbecb8;color:#6b4e00}.pill.mal{background:#fbd3d0;color:#8a1b14}
@@ -60,3 +60,5 @@ table.rol{font-size:11px}table.rol th.dia{text-align:center;padding:4px 2px;min-
   @page{size:landscape;margin:10mm}
 }
 .informe-solo .card{background:#fff;color:#111;border-color:#ccc}
+
+details.mas{margin-top:6px}details.mas>summary{cursor:pointer;color:var(--azul);font-size:12px;padding:4px 0;list-style:none}details.mas>summary::before{content:'▸ '}details.mas[open]>summary::before{content:'▾ '}

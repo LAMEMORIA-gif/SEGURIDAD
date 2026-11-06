@@ -1,5 +1,5 @@
 // Service Worker de Seguridad La Memoria: abre sin internet; network-first para que se actualice solo.
-const CACHE_NAME = 'seguridad-lm-v6';
+const CACHE_NAME = 'seguridad-lm-v7';
 const ASSETS = ['./','./index.html','./app.css','./legado.js','./core.js','./vistas.js','./apoyo.js','./rol.js','./riesgo.js','./manifest.json','./icon-192.png','./icon-512.png','./apple-touch-icon.png'];
 self.addEventListener('install', e => { self.skipWaiting(); e.waitUntil(caches.open(CACHE_NAME).then(c => Promise.all(ASSETS.map(u => c.add(u).catch(()=>{}))))); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
