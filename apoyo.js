@@ -18,16 +18,16 @@ function resumenApoyo(inc) {
   const lista = [], mes = {}, campo = {};
   inc.forEach(i => {
     const a = apoyoDe(i), d = new Date(i.fecha), k = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
-    const m = mes[k] = mes[k] || { mes: k, incidencias: 0, apoyos: 0, municipal: 0, guardia: 0 };
-    const c = campo[i.campo || 'Sin especificar'] = campo[i.campo || 'Sin especificar'] || { campo: i.campo || 'Sin especificar', incidencias: 0, apoyos: 0, municipal: 0, guardia: 0 };
+    const m = mes[k] = mes[k] || { mes: k, incidencias: 0, apoyos: 0, municipal: 0, guardia: 0, ambas: 0 };
+    const c = campo[i.campo || 'Sin especificar'] = campo[i.campo || 'Sin especificar'] || { campo: i.campo || 'Sin especificar', incidencias: 0, apoyos: 0, municipal: 0, guardia: 0, ambas: 0 };
     m.incidencias++; c.incidencias++;
     if (a) {
       lista.push({ inc: i, ap: a.ap, res: a.res });
-      [m, c].forEach(x => { x.apoyos++; if (a.ap.includes('M')) x.municipal++; if (a.ap.includes('G')) x.guardia++; });
+      [m, c].forEach(x => { x.apoyos++; if (a.ap === 'MG') x.ambas++; else if (a.ap === 'M') x.municipal++; else x.guardia++; });
     }
   });
   lista.sort((a, b) => b.inc.fecha - a.inc.fecha);
-  const t = { total: lista.length, municipal: lista.filter(x => x.ap.includes('M')).length, guardia: lista.filter(x => x.ap.includes('G')).length, incidencias: inc.length };
+  const t = { total: lista.length, municipal: lista.filter(x => x.ap === 'M').length, guardia: lista.filter(x => x.ap === 'G').length, ambas: lista.filter(x => x.ap === 'MG').length, incidencias: inc.length };
   t.pct = pct(t.total, t.incidencias);
   const fin = x => Object.assign(x, { pct: pct(x.apoyos, x.incidencias) });
   return { ...t, lista, porMes: Object.values(mes).map(fin).sort((a, b) => b.mes < a.mes ? -1 : 1), porCampo: Object.values(campo).map(fin).sort((a, b) => b.apoyos - a.apoyos) };
@@ -35,10 +35,10 @@ function resumenApoyo(inc) {
 const claseApoyo = p => p >= 15 ? 'mal' : p >= 10 ? 'warn' : 'ok';
 function kpisApoyo(inc) {
   const r = resumenApoyo(inc);
-  return kpi(r.total, 'Intervenciones de autoridad', claseApoyo(r.pct), r.pct + ' % de las incidencias') + kpi(r.municipal, 'Con policía municipal', '') + kpi(r.guardia, 'Con guardia civil estatal', '');
+  return kpi(r.total, 'Intervenciones de autoridad', claseApoyo(r.pct), r.pct + ' % de las incidencias') + kpi(r.municipal, 'Solo policía municipal', '') + kpi(r.guardia, 'Solo guardia civil estatal', '') + kpi(r.ambas, 'Ambas autoridades', '');
 }
 function textoApoyo(r) {
-  return `${r.total} de ${r.incidencias} incidencias (${r.pct} %) requirieron apoyo de la autoridad: ${r.municipal} con policía municipal y ${r.guardia} con guardia civil estatal.`;
+  return `${r.total} de ${r.incidencias} incidencias (${r.pct} %) requirieron apoyo de la autoridad: ${r.municipal} solo con policía municipal, ${r.guardia} solo con guardia civil estatal y ${r.ambas} con ambas.`;
 }
 function cardApoyoResumen(inc, conBoton) {
   const r = resumenApoyo(inc);
@@ -60,11 +60,11 @@ document.addEventListener('click', e => { const b = e.target.closest && e.target
 registrarVista({
   id: 'apoyo', titulo: 'Apoyo policial', icono: '🚓', grupo: 'Seguridad', render(el) {
     const inc = V.incidencias(), r = resumenApoyo(inc);
-    let h = '<div class="kpis">' + kpi(r.total, 'Intervenciones', claseApoyo(r.pct), r.pct + ' % de las incidencias') + kpi(r.municipal, 'Policía municipal') + kpi(r.guardia, 'Guardia civil estatal') + kpi(r.incidencias, 'Incidencias del periodo') + '</div>';
+    let h = '<div class="kpis">' + kpi(r.total, 'Intervenciones', claseApoyo(r.pct), r.pct + ' % de las incidencias') + kpi(r.municipal, 'Solo policía municipal') + kpi(r.guardia, 'Solo guardia civil estatal') + kpi(r.ambas, 'Ambas autoridades') + kpi(r.incidencias, 'Incidencias del periodo') + '</div>';
     h += `<div class="barra-acc"><button class="btn" id="apCsv">Descargar registro (CSV)</button></div>`;
     h += card('Intervenciones con policía municipal y guardia civil estatal', `<p class="nota">${esc(textoApoyo(r))} Se detectan en la descripción y la acción de cada incidencia; al registrar una incidencia se puede indicar a mano. No incluye nombres ni fichas de las personas.${r.pct >= 10 ? ' <b>Atención: 10 % o más de las incidencias requirió a la autoridad.</b>' : ''}</p>`);
-    h += '<div class="grid2">' + card('Por mes', tabla([{ t: 'Mes', f: x => x.mes }, { t: 'Incidencias', f: x => x.incidencias }, { t: 'Con apoyo', f: x => x.apoyos }, { t: 'Municipal', f: x => x.municipal }, { t: 'Guardia civil', f: x => x.guardia }, { t: '% incid.', f: x => x.pct + ' %' }], r.porMes)) +
-      card('Por campo', tabla([{ t: 'Campo', f: x => x.campo }, { t: 'Incidencias', f: x => x.incidencias }, { t: 'Con apoyo', f: x => x.apoyos }, { t: 'Municipal', f: x => x.municipal }, { t: 'Guardia civil', f: x => x.guardia }, { t: '% incid.', f: x => x.pct + ' %' }], r.porCampo)) + '</div>';
+    h += '<div class="grid2">' + card('Por mes', tabla([{ t: 'Mes', f: x => x.mes }, { t: 'Incidencias', f: x => x.incidencias }, { t: 'Con apoyo', f: x => x.apoyos }, { t: 'Solo municipal', f: x => x.municipal }, { t: 'Solo guardia civil', f: x => x.guardia }, { t: 'Ambas', f: x => x.ambas }, { t: '% incid.', f: x => x.pct + ' %' }], r.porMes)) +
+      card('Por campo', tabla([{ t: 'Campo', f: x => x.campo }, { t: 'Incidencias', f: x => x.incidencias }, { t: 'Con apoyo', f: x => x.apoyos }, { t: 'Solo municipal', f: x => x.municipal }, { t: 'Solo guardia civil', f: x => x.guardia }, { t: 'Ambas', f: x => x.ambas }, { t: '% incid.', f: x => x.pct + ' %' }], r.porCampo)) + '</div>';
     h += card('Registro de intervenciones (más reciente primero)', tablaRegistroApoyo(r));
     el.innerHTML = h;
     $('#apCsv', el).onclick = () => {

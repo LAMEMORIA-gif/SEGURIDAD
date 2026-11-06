@@ -1,7 +1,7 @@
 /* Seguridad La Memoria — vistas: resumen, rondines, accesos, incidencias, RH, desempeño, control operativo, datos, configuración */
 'use strict';
 
-const COL = { azul: '#3b82f6', naranja: '#e08a4b', verde: '#34a853', rojo: '#e5534b', amarillo: '#d9a520', gris: '#8b95a5' };
+const COL = { azul: '#a9ccff', naranja: '#f0a35e', verde: '#34a853', rojo: '#e5534b', amarillo: '#d9a520', gris: '#c3d3f5' };
 function tabla(cols, rows, opc) {
   opc = opc || {}; const max = opc.max || 150;
   if (!rows.length) return '<div class="vacio">Sin registros en este periodo</div>';
