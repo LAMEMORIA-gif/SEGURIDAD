@@ -51,6 +51,10 @@ const filaApoyo = x => ({ fecha: x.inc.fecha, campo: x.inc.campo, problema: x.in
 function tablaRegistroApoyo(r) {
   return tabla([{ t: 'Fecha', f: x => fmtFecha(x.fecha) }, { t: 'Campo', f: x => x.campo }, { t: 'Incidencia', f: x => x.problema }, { t: 'Autoridad', f: x => x.autoridad }, { t: 'Resultado', f: x => x.resultado }, { t: 'Estatus', f: x => x.estatus }], r.lista.map(filaApoyo), { max: 300 });
 }
+function cardApoyoPlegable(titulo, lista, n) {
+  n = n || 3; const r1 = { lista: lista.slice(0, n) }, resto = lista.slice(n);
+  return card(titulo, tablaRegistroApoyo(r1) + (resto.length ? `<details class="mas"><summary>Ver ${resto.length} intervención(es) más</summary>${tablaRegistroApoyo({ lista: resto })}</details>` : ''));
+}
 document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-ir]'); if (b) irA(b.dataset.ir); });
 
 registrarVista({
