@@ -174,7 +174,9 @@ registrarVista({
       <label>Fecha (inicio)<input type="date" id="rF" value="${isoDia(Date.now())}"></label><label>Fecha fin (opcional, para permisos/vacaciones)<input type="date" id="rFF"></label><label>Notas<textarea id="rN" rows="2"></textarea></label>`,
       async d => {
         const p = $('#rP', d).value.trim(); if (!p) { toast('Escriba el nombre de la persona', 'mal'); return false; }
-        await dbPut('rh', { tipo: $('#rT', d).value, persona: p, campo: $('#rC', d).value, depto: $('#rD', d).value, fecha: fromISO($('#rF', d).value) + 12 * 36e5, fechaFin: $('#rFF', d).value ? fromISO($('#rFF', d).value) + 12 * 36e5 : null, notas: $('#rN', d).value.trim() });
+        const reg = { tipo: $('#rT', d).value, persona: nombreCanonico(p), fecha: fromISO($('#rF', d).value) + 12 * 36e5, fechaFin: $('#rFF', d).value ? fromISO($('#rFF', d).value) + 12 * 36e5 : null };
+        if (DATA.rh.some(x => claveMov(x) === claveMov(reg))) { toast('Ya existe ese mismo movimiento (misma persona, tipo y fecha). No se duplicó.', 'mal'); return false; }
+        await dbPut('rh', { tipo: $('#rT', d).value, persona: reg.persona, campo: $('#rC', d).value, depto: $('#rD', d).value, fecha: fromISO($('#rF', d).value) + 12 * 36e5, fechaFin: $('#rFF', d).value ? fromISO($('#rFF', d).value) + 12 * 36e5 : null, notas: $('#rN', d).value.trim() });
         toast('Movimiento registrado'); renderApp();
       });
   }
@@ -241,7 +243,7 @@ registrarVista({
         <label>Permisos<input type="number" id="ePe" min="0" value="0"></label><label>Incapacidades<input type="number" id="eIc" min="0" value="0"></label><label>Días con uniforme completo<input type="number" id="eUn" min="0" value="7"></label><label>Días con buena imagen<input type="number" id="eIm" min="0" value="7"></label>
         <label>Control de acceso (1-5, obligatorio)${s5('eCA')}</label><label>Trabajo en equipo (1-5, opcional)${s5('eEq', 'Neutral (3)')}</label>`,
         async d => {
-          const g = $('#eG', d).value.trim(); if (!g) { toast('Escriba el nombre del guardia', 'mal'); return false; }
+          const g = nombreCanonico($('#eG', d).value.trim()); if (!g) { toast('Escriba el nombre del guardia', 'mal'); return false; }
           const anio = +$('#eAn', d).value, sem = +$('#eSe', d).value;
           const ex = DATA.evaluaciones.find(x => x.tipo === 'semanal' && norm(x.guardia) === norm(g) && x.sem === sem && x.anio === anio);
           await dbPut('evaluaciones', { id: ex ? ex.id : undefined, tipo: 'semanal', guardia: g, ubicacion: $('#eU', d).value, anio, sem, fecha: LEGADO.lunesISO(anio, sem), asistencia: +$('#eAs', d).value, retardos: +$('#eRe', d).value, inasistencias: +$('#eIn', d).value, permisos: +$('#ePe', d).value, incapacidades: +$('#eIc', d).value, uniforme: +$('#eUn', d).value, imagen: +$('#eIm', d).value, _evalControlAcceso: $('#eCA', d).value, _evalEquipo: $('#eEq', d).value });
@@ -253,7 +255,9 @@ registrarVista({
       async d => {
         const g = $('#lG', d).value.trim(), m = $('#lM', d).value.trim(); if (!g || !m) { toast('Escriba guardia y motivo', 'mal'); return false; }
         const ts = fromISO($('#lF', d).value) + 12 * 36e5, w = semISO(ts);
-        await dbPut('evaluaciones', { tipo: 'llamada', guardia: g, fecha: ts, anio: w.anio, sem: w.sem, severidad: $('#lS', d).value, motivo: m });
+        const ll = { guardia: nombreCanonico(g), fecha: ts, motivo: m };
+        if (DATA.evaluaciones.some(x => x.tipo === 'llamada' && claveLlam(x) === claveLlam(ll))) { toast('Esa llamada de atención ya está registrada. No se duplicó.', 'mal'); return false; }
+        await dbPut('evaluaciones', { tipo: 'llamada', guardia: ll.guardia, fecha: ts, anio: w.anio, sem: w.sem, severidad: $('#lS', d).value, motivo: m });
         toast('Llamada registrada'); renderApp();
       });
   }

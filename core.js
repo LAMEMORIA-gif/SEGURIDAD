@@ -229,6 +229,17 @@ function kpi(valor, etiqueta, nivel, sub) {
 }
 const semaforo = (v, verde, amar) => v >= verde ? 'ok' : v >= amar ? 'warn' : 'mal';
 
+
+// ---------- anti-duplicados: un solo registro por hecho, sin importar si se capturó aquí o se importó ----------
+const claveMov = r => [r.tipo, norm(r.persona), isoDia(r.fecha), r.fechaFin ? isoDia(r.fechaFin) : ''].join('|');
+const claveLlam = l => [norm(l.guardia), isoDia(l.fecha), norm(l.motivo)].join('|');
+const claveEvSem = e => [norm(e.guardia), e.anio, e.sem].join('|');
+function nombreCanonico(txt) { // usa la escritura ya existente del nombre (evita "JUAN PEREZ" vs "Juan Pérez")
+  const t = String(txt || '').trim(), k = norm(t); if (!k) return t;
+  const rh = DATA.rh.find(x => norm(x.persona) === k), ev = DATA.evaluaciones.find(x => norm(x.guardia) === k), ro = DATA.rondines.find(x => norm(x.guardia) === k);
+  return (ro && ro.guardia.trim()) || (ev && ev.guardia) || (rh && rh.persona) || t;
+}
+
 // ---------- importación de archivos JSON de las apps y paneles ----------
 async function importarArchivos(files) {
   const cuenta = { rhMov: 0, desempeno: 0, rhPlantilla: 0, operativo: 0, rondines: 0, accesos: 0, incidencias: 0, otros: 0, error: 0, duplicados: 0 };
@@ -257,16 +268,23 @@ async function importarArchivos(files) {
         (data.capturas_nuevas || []).forEach(r => lotesDesemp.push(LEGADO.convEval(r, ed['own:' + r._ownId])));
         (data.llamadas_atencion || []).forEach(l => lotesDesemp.push(LEGADO.convLlamada(l)));
         const rhNuevos = (data.plantilla_eventos || []).map(e => e && e.empleado ? LEGADO.convEventoRH(e) : LEGADO.convEventoPlantilla(e)).filter(Boolean);
-        if (lotesDesemp.length) await dbPutMany('evaluaciones', lotesDesemp);
-        if (rhNuevos.length) await dbPutMany('rh', rhNuevos);
-        cuenta.desempeno += lotesDesemp.length; cuenta.rhPlantilla += rhNuevos.length; continue;
+        // no duplicar lo que ya se capturó directamente en el ERP
+        const kSem = new Set(DATA.evaluaciones.filter(x => x.tipo === 'semanal' && x.origen !== 'legado').map(claveEvSem));
+        const kLl = new Set(DATA.evaluaciones.filter(x => x.tipo === 'llamada' && x.origen !== 'legado').map(claveLlam));
+        const kMov = new Set(DATA.rh.filter(x => x.origen !== 'legado').map(claveMov));
+        const evOk = lotesDesemp.filter(x => !(x.tipo === 'semanal' ? kSem.has(claveEvSem(x)) : kLl.has(claveLlam(x))));
+        const rhOk = rhNuevos.filter(x => !kMov.has(claveMov(x)));
+        cuenta.duplicados += (lotesDesemp.length - evOk.length) + (rhNuevos.length - rhOk.length);
+        if (evOk.length) await dbPutMany('evaluaciones', evOk);
+        if (rhOk.length) await dbPutMany('rh', rhOk);
+        cuenta.desempeno += evOk.length; cuenta.rhPlantilla += rhOk.length; continue;
       }
       const lista = Array.isArray(data) ? data : [data];
       if (lista.length && lista.every(o => LEGADO.esFaltaRH(o) || LEGADO.esVacRH(o))) {
-        const claves = new Set(DATA.rh.map(LEGADO.claveRH).filter(Boolean)), nuevosRH = [];
+        const claves = new Set(DATA.rh.map(LEGADO.claveRH).filter(Boolean)), nuevosRH = [], kMan = new Set(DATA.rh.filter(x => x.origen !== 'legado').map(claveMov));
         lista.forEach(o => {
           const r = LEGADO.esVacRH(o) ? LEGADO.convVacRH(o) : LEGADO.convFaltaRH(o), k = LEGADO.claveRH(r);
-          if (claves.has(k)) { cuenta.duplicados++; return; }
+          if (claves.has(k) || kMan.has(claveMov(r))) { cuenta.duplicados++; return; }
           claves.add(k); nuevosRH.push(r); cuenta.rhMov++;
         });
         if (nuevosRH.length) await dbPutMany('rh', nuevosRH);
