@@ -123,6 +123,9 @@ registrarVista({
 });
 
 // ============ INCIDENCIAS ============
+const SUBCAT_PS = ['Galeras Palomas', 'Galeras Empaque'];
+const esPS = i => /previsi/i.test(i.depto || '');
+const subcatPS = i => esPS(i) ? (SUBCAT_PS.find(s => norm(s) === norm(i.punto || i.subcat)) || 'Sin subcategoría') : '';
 registrarVista({
   id: 'incidencias', titulo: 'Incidencias', icono: '⚠️', grupo: 'Seguridad', render(el) {
     const inc = V.incidencias().sort((a, b) => b.fecha - a.fecha);
@@ -131,23 +134,29 @@ registrarVista({
     if (puedeEditar()) h += `<div class="barra-acc"><button class="btn" id="nuevaInc">+ Registrar incidencia</button></div>`; else h += soloLectura();
     h += '<div class="grid2">' + card('Por campo', barras(groupCount(inc, i => i.campo), { color: COL.naranja })) + card('Por catálogo de problema', barras(groupCount(inc, i => i.problema), { color: COL.rojo })) +
       card('Por departamento', barras(groupCount(inc, i => i.depto), { color: COL.azul })) + card('Severidad por campo (puntos)', barras(inc.reduce((m, i) => { m[i.campo] = (m[i.campo] || 0) + pesoDe(i); return m; }, {}), { color: COL.rojo })) + '</div>';
+    const ps = inc.filter(esPS);
+    if (ps.length) h += card('Previsión Social por subcategoría', barras(groupCount(ps, subcatPS), { color: COL.verde }) + '<div class="nota">Total Previsión Social: ' + ps.length + ' incidencia(s).</div>');
     h += cardApoyoResumen(inc, true);
-    h += card('Registro de incidencias', tabla([{ t: 'Fecha', f: i => fmtFecha(i.fecha) }, { t: 'Campo', f: i => i.campo }, { t: 'Departamento', f: i => i.depto || '—' }, { t: 'Problema', f: i => i.problema }, { t: 'Peso', h: 1, f: i => pill(pesoDe(i), pesoDe(i) >= 4 ? 'mal' : pesoDe(i) >= 3 ? 'warn' : 'ok') }, { t: 'Autoridad', f: i => { const x = apoyoDe(i); return x ? AUT_ETQ[x.ap] : '—'; } }, { t: 'Descripción', f: i => i.descripcion || '' }, { t: '', h: 1, f: i => puedeEditar() ? `<button class="mini" data-del="${i.id}">Eliminar</button>` : '' }], inc));
+    h += card('Registro de incidencias', tabla([{ t: 'Fecha', f: i => fmtFecha(i.fecha) }, { t: 'Campo', f: i => i.campo }, { t: 'Departamento', f: i => i.depto || '—' }, { t: 'Subcategoría', f: i => subcatPS(i) || '—' }, { t: 'Problema', f: i => i.problema }, { t: 'Peso', h: 1, f: i => pill(pesoDe(i), pesoDe(i) >= 4 ? 'mal' : pesoDe(i) >= 3 ? 'warn' : 'ok') }, { t: 'Autoridad', f: i => { const x = apoyoDe(i); return x ? AUT_ETQ[x.ap] : '—'; } }, { t: 'Descripción', f: i => i.descripcion || '' }, { t: '', h: 1, f: i => puedeEditar() ? `<button class="mini" data-del="${i.id}">Eliminar</button>` : '' }], inc));
     el.innerHTML = h;
     $$('[data-del]', el).forEach(b => b.onclick = async () => { if (confirm('¿Eliminar esta incidencia?')) { await dbDel('incidencias', b.dataset.del); renderApp(); } });
     const nb = $('#nuevaInc', el);
-    if (nb) nb.onclick = () => dialogo('Registrar incidencia', `
+    if (nb) nb.onclick = () => { const dlg = dialogo('Registrar incidencia', `
       <label>Fecha<input type="date" id="iF" value="${isoDia(Date.now())}"></label>
       <label>Campo<select id="iC">${nombresCampos().map(c => `<option>${esc(c)}</option>`).join('')}</select></label>
       <label>Departamento<select id="iD">${getDeptos().map(c => `<option>${esc(c)}</option>`).join('')}</select></label>
+      <label id="iSubL" style="display:none">Subcategoría de Previsión Social<select id="iSub"><option value="">Sin subcategoría</option>${SUBCAT_PS.map(s => `<option>${s}</option>`).join('')}</select></label>
       <label>Catálogo de problema<select id="iP">${getCatalogo().map(c => `<option value="${esc(c.nombre)}">${esc(c.nombre)} (peso ${c.peso})</option>`).join('')}</select></label>
       <label>Descripción<textarea id="iDesc" rows="3"></textarea></label><label>Acción tomada<textarea id="iAcc" rows="2"></textarea></label>
       <label>Apoyo de la autoridad<select id="iAp"><option value="">Detectar automáticamente</option><option value="N">Sin apoyo de la autoridad</option><option value="M">Policía municipal</option><option value="G">Guardia civil estatal</option><option value="MG">Policía municipal y guardia civil</option></select></label>`,
       async d => {
-        const p = $('#iP', d).value;
-        await dbPut('incidencias', { fecha: fromISO($('#iF', d).value) + 12 * 36e5, campo: $('#iC', d).value, depto: $('#iD', d).value, problema: p, peso: (getCatalogo().find(c => c.nombre === p) || {}).peso || 1, descripcion: $('#iDesc', d).value.trim(), accion: $('#iAcc', d).value.trim(), apoyoManual: $('#iAp', d).value, por: SESION.nombre });
+        const p = $('#iP', d).value, dep = $('#iD', d).value;
+        await dbPut('incidencias', { punto: esPS({ depto: dep }) ? $('#iSub', d).value : '', fecha: fromISO($('#iF', d).value) + 12 * 36e5, campo: $('#iC', d).value, depto: $('#iD', d).value, problema: p, peso: (getCatalogo().find(c => c.nombre === p) || {}).peso || 1, descripcion: $('#iDesc', d).value.trim(), accion: $('#iAcc', d).value.trim(), apoyoManual: $('#iAp', d).value, por: SESION.nombre });
         toast('Incidencia registrada'); renderApp();
       });
+      const mostrar = () => { $('#iSubL', dlg).style.display = esPS({ depto: $('#iD', dlg).value }) ? '' : 'none'; };
+      $('#iD', dlg).onchange = mostrar; mostrar();
+    };
   }
 });
 
