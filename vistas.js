@@ -90,19 +90,15 @@ registrarVista({
     const porG = {}; rs.forEach(r => { (porG[r.guardia] = porG[r.guardia] || []).push(cumplimientoRondin(r)); });
     const gc = {}; Object.keys(porG).forEach(g => gc[g] = Math.round(sum(porG[g]) / porG[g].length));
     h += '<div class="grid2">' + card('Cumplimiento por guardia (%)', barras(gc, { color: COL.verde, fmt: v => v + '%' })) + card('Rondines por turno', barras(groupCount(rs, r => r.turno), { color: COL.naranja })) + '</div>';
+    h += rxCardMapa(rs) + rxCardGaleria(rs) + rxGraficas(rs);
     h += card('Detalle de rondines', tabla([
       { t: 'Fecha', f: r => fmtFH(r.inicio) }, { t: 'Guardia', f: r => r.guardia }, { t: 'Campo', f: r => normCampo(r.area) }, { t: 'Área', f: r => r.area }, { t: 'Turno', f: r => r.turno || '—' },
       { t: 'Duración', f: r => r.fin ? Math.round((r.fin - r.inicio) / 60000) + ' min' : 'sin cerrar' },
       { t: 'Puntos', f: r => (r.checkpoints || []).filter(c => c.marcado).length + '/' + (r.checkpoints || []).length },
       { t: 'Cumpl.', h: 1, f: r => { const c = cumplimientoRondin(r); return pill(c + '%', semaforo(c, 90, 75)); } }, { t: 'Novedades', f: r => (r.novedades || []).length }
     ], rs, { click: 1 }));
-    el.innerHTML = h;
-    $$('tr.click', el).forEach(tr => tr.onclick = () => {
-      const r = rs[+tr.dataset.i];
-      const cps = (r.checkpoints || []).map(c => `<li>${c.marcado ? '✅' : '⬜'} ${esc(c.nombre)} ${c.ts ? '· ' + fmtHora(c.ts) : ''} ${c.nota ? '— ' + esc(c.nota) : ''}</li>`).join('');
-      const nv = (r.novedades || []).map(n => '<li>' + esc(Object.entries(n).filter(([k, v]) => typeof v === 'string' && v && v.length < 400 && k !== 'foto' && !/^data:/.test(v)).map(([k, v]) => v).join(' → ')) + '</li>').join('');
-      dialogo('Rondín de ' + r.guardia, `<p>${esc(r.area)} · ${esc(r.turno || '')} · ${fmtFH(r.inicio)} a ${fmtFH(r.fin)}</p><h4>Puntos de control</h4><ul class="lista">${cps || '<li>—</li>'}</ul><h4>Novedades</h4><ul class="lista">${nv || '<li>Sin novedades</li>'}</ul>`);
-    });
+    el.innerHTML = h; bindRondinesExtra(el);
+    $$('tr.click', el).forEach(tr => tr.onclick = () => abrirRondin(rs[+tr.dataset.i]));
   }
 });
 
