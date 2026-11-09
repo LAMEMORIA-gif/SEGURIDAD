@@ -240,6 +240,45 @@ function nombreCanonico(txt) { // usa la escritura ya existente del nombre (evit
   return (ro && ro.guardia.trim()) || (ev && ev.guardia) || (rh && rh.persona) || t;
 }
 
+
+// ---------- plantilla de personal (roster) ----------
+const ANTIG_TABLA = [[1, 12], [2, 14], [3, 16], [4, 18], [5, 20], [6, 22], [11, 24], [16, 26], [21, 28], [26, 30], [31, 32]];
+const vacPorAntiguedad = years => { let d = 0; for (const [a, v] of ANTIG_TABLA) { if (years >= a) d = v; else break; } return d; };
+function fechaFlex(x) { // dd/mm/yyyy, yyyy-mm-dd o ms
+  if (x == null || x === '') return null; if (typeof x === 'number') return x;
+  let m = String(x).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); if (m) return new Date(+m[3], +m[2] - 1, +m[1], 12).getTime();
+  m = String(x).match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) return new Date(+m[1], +m[2] - 1, +m[3], 12).getTime();
+  const t = Date.parse(x); return isNaN(t) ? null : t;
+}
+function antiguedad(ts) {
+  if (!ts) return { years: 0, texto: '—' };
+  const i = new Date(ts), h = new Date(); h.setHours(0, 0, 0, 0);
+  let y = h.getFullYear() - i.getFullYear(), m = h.getMonth() - i.getMonth(), d = h.getDate() - i.getDate();
+  if (d < 0) { m--; d += new Date(h.getFullYear(), h.getMonth(), 0).getDate(); } if (m < 0) { y--; m += 12; } if (y < 0) { y = 0; m = 0; d = 0; }
+  return { years: y, texto: y + ' Años, ' + m + ' Mes(es), ' + d + ' y Dia(s)' };
+}
+function extraerPlantillaBaseRH(html) { // lee la lista EMPLEADOS_RAW del dashboard de RH (el archivo no sale de su equipo)
+  const i = html.indexOf('EMPLEADOS_RAW'); if (i < 0) return null;
+  const a = html.indexOf('[', i); if (a < 0) return null; let n = 0, j = a;
+  for (; j < html.length; j++) { const ch = html[j]; if (ch === '[') n++; else if (ch === ']') { n--; if (!n) break; } }
+  try { const arr = JSON.parse(html.slice(a, j + 1)); return arr.filter(e => e && e.empleado).map(e => ({ empleado: String(e.empleado).trim(), funcion: e.funcion || '', departamento: e.departamento || '', genero: e.genero || '', fechaIngreso: fechaFlex(e.fechaIngreso) })); } catch (e) { return null; }
+}
+function construirPlantilla() {
+  const map = {}, base = cfgGet('plantilla_base_rh', []);
+  base.forEach(e => { map[norm(e.empleado)] = { ...e, estado: 'ACTIVO' }; });
+  DATA.rh.filter(x => x.tipo === 'Alta' || x.tipo === 'Baja').sort((a, b) => a.fecha - b.fecha).forEach(x => {
+    const k = norm(x.persona); if (!k) return;
+    if (x.tipo === 'Alta') map[k] = { empleado: x.persona, funcion: x.funcion || (map[k] && map[k].funcion) || '', departamento: x.depto || '', genero: x.genero || (map[k] && map[k].genero) || '', fechaIngreso: x.fecha, estado: 'ACTIVO' };
+    else map[k] = { ...(map[k] || { empleado: x.persona, funcion: '', departamento: x.depto || '', genero: '', fechaIngreso: null }), estado: 'BAJA', fechaBaja: x.fecha };
+  });
+  const dias = r => Math.max(0, Math.round(((r.fechaFin || r.fecha) - r.fecha) / 864e5));
+  return Object.values(map).map(e => {
+    const k = norm(e.empleado), an = antiguedad(e.fechaIngreso), vp = vacPorAntiguedad(an.years);
+    const vt = sum(DATA.rh.filter(x => x.tipo === 'Vacaciones' && norm(x.persona) === k), dias), fl = DATA.rh.filter(x => x.tipo === 'Inasistencia' && norm(x.persona) === k).length;
+    return { ...e, antTexto: an.texto, antAnios: an.years, vacAnt: vp, vacTom: vt, vacRest: vp - vt, faltas: fl };
+  }).sort((a, b) => a.empleado.localeCompare(b.empleado));
+}
+
 // ---------- importación de archivos JSON de las apps y paneles ----------
 async function importarArchivos(files) {
   const cuenta = { rhMov: 0, desempeno: 0, rhPlantilla: 0, operativo: 0, rondines: 0, accesos: 0, incidencias: 0, otros: 0, error: 0, duplicados: 0 };
@@ -256,7 +295,14 @@ async function importarArchivos(files) {
   };
   for (const f of files) {
     try {
-      const data = JSON.parse(await f.text());
+      const txt = await f.text();
+      if (/\.html?$/i.test(f.name) || /^\s*<(!doctype|html)/i.test(txt.slice(0, 200))) {
+        const base = extraerPlantillaBaseRH(txt);
+        if (base) { await cfgSet('plantilla_base_rh', base); cuenta.plantillaBase = base.length; }
+        else cuenta.error++;
+        continue;
+      }
+      const data = JSON.parse(txt);
       if (data && data._unificado && data.datos) { await restaurarRespaldo(data, false); cuenta.otros++; continue; }
       if (data && Array.isArray(data.incidencias_agregadas)) {
         const nuevas = LEGADO.convArchivoIncidencias(data, DATA.incidencias);
@@ -307,6 +353,7 @@ async function importarArchivos(files) {
 }
 function resumenImport(c) {
   const p = [];
+  if (c.plantillaBase) p.push('plantilla base de ' + c.plantillaBase + ' empleado(s)');
   if (c.rondines) p.push(c.rondines + ' rondín(es)'); if (c.accesos) p.push(c.accesos + ' acceso(s)');
   if (c.incidencias) p.push(c.incidencias + ' incidencia(s)'); if (c.desempeno) p.push(c.desempeno + ' registro(s) de desempeño'); if (c.rhMov) p.push(c.rhMov + ' movimiento(s) de RH'); if (c.rhPlantilla) p.push(c.rhPlantilla + ' alta(s)/baja(s) de plantilla'); if (c.operativo > 0) p.push(c.operativo + ' captura(s) operativa(s)'); if (c.otros) p.push(c.otros + ' respaldo(s) completo(s)');
   let t = p.length ? 'Importado: ' + p.join(', ') + '.' : 'No se importó nada nuevo.';

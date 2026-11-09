@@ -75,7 +75,7 @@
   }
   function convEventoRH(e) {
     if (e.tipo !== 'alta' && e.tipo !== 'baja') return null;
-    return { id: 'rh_pl_' + e.ts, tipo: e.tipo === 'alta' ? 'Alta' : 'Baja', persona: String(e.empleado || '').trim(), campo: '', depto: e.departamento || 'SEGURIDAD', fecha: e.fecha ? diaTs(e.fecha) : e.ts, notas: [e.motivo, e.obs].filter(Boolean).join(' · '), origen: 'legado' };
+    return { id: 'rh_pl_' + e.ts, tipo: e.tipo === 'alta' ? 'Alta' : 'Baja', persona: String(e.empleado || '').trim(), campo: '', depto: e.departamento || 'SEGURIDAD', funcion: e.funcion || undefined, genero: e.genero || undefined, fecha: e.fecha ? diaTs(e.fecha) : e.ts, notas: [e.motivo, e.obs].filter(Boolean).join(' · '), origen: 'legado' };
   }
   g.LEGADO = { esFaltaRH, esVacRH, claveRH, convFaltaRH, convVacRH, convEventoRH, convEval, convLlamada, convEventoPlantilla, campoLegado, deptoLegado, esIncLegado, convInc, esOpLegado, convOp, convArchivoIncidencias, lunesISO };
 })(typeof window !== 'undefined' ? window : globalThis);

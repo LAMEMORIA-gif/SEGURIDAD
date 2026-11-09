@@ -171,8 +171,17 @@ registrarVista({
     let h = '<div class="kpis">' + TIPOS_RH.map(t => kpi(por(t).length, ETQ_RH[t], t === 'Baja' && por(t).length ? 'warn' : '', ['Vacaciones', 'Inasistencia', 'Permiso', 'Incapacidad'].includes(t) ? sum(por(t), diasRH) + ' día(s)' : '')).join('') + '</div>';
     h += puedeEditar() ? '<div class="barra-acc"><button class="btn" id="nuevoRH">+ Registrar movimiento</button></div>' : soloLectura();
     h += '<div class="grid2">' + card('Movimientos por tipo', barras(groupCount(rh, x => x.tipo), { color: COL.azul })) + card('Inasistencias por departamento', barras(groupCount(por('Inasistencia'), x => x.depto), { color: COL.rojo })) + '</div>';
+    const pl = construirPlantilla();
+    h += `<section class="card"><h3>Empleados <input id="qEmp" class="buscar" placeholder="Buscar empleado..."> <span class="nota" id="cEmp"></span></h3>${pl.length ? '<div id="tEmp"></div>' : '<div class="vacio">Aún no hay plantilla cargada. En <b>Importar y respaldo</b> elija el archivo RH_Control_Personal.html para leer la plantilla de empleados.</div>'}</section>`;
     h += card('Registro', tabla([{ t: 'Fecha', f: x => fmtFecha(x.fecha) }, { t: 'Tipo', f: x => x.tipo }, { t: 'Persona', f: x => x.persona }, { t: 'Campo', f: x => x.campo || '—' }, { t: 'Depto.', f: x => x.depto || '—' }, { t: 'Días', f: x => ['Alta', 'Baja'].includes(x.tipo) ? '—' : diasRH(x) }, { t: 'Notas', f: x => x.notas || '' }, { t: '', h: 1, f: x => puedeEditar() ? `<button class="mini" data-del="${x.id}">Eliminar</button>` : '' }], rh));
     el.innerHTML = h;
+    const pintaEmp = () => {
+      const q = ($('#qEmp', el) ? $('#qEmp', el).value : '').toLowerCase().trim(), l = pl.filter(e => !q || e.empleado.toLowerCase().includes(q));
+      if (!$('#tEmp', el)) return; $('#cEmp', el).textContent = l.length + ' empleado' + (l.length === 1 ? '' : 's');
+      $('#tEmp', el).innerHTML = tabla([{ t: 'Empleado', f: e => e.empleado }, { t: 'Función', f: e => e.funcion || '—' }, { t: 'Departamento', f: e => e.departamento || '—' }, { t: 'Género', f: e => e.genero || '—' }, { t: 'Fecha ingreso', f: e => e.fechaIngreso ? fmtFecha(e.fechaIngreso) : '—' }, { t: 'Antigüedad', f: e => e.antTexto },
+        { t: 'Vac. por antigüedad', f: e => e.vacAnt }, { t: 'Vac. tomadas', f: e => e.vacTom }, { t: 'Vac. restantes', h: 1, f: e => `<span class="${e.vacRest < 0 ? 'bad' : ''}">${e.vacRest}</span>` }, { t: 'Faltas', h: 1, f: e => `<span class="${e.faltas >= 5 ? 'bad' : ''}">${e.faltas}</span>` }, { t: 'Estado', h: 1, f: e => pill(e.estado, e.estado === 'ACTIVO' ? 'ok' : '') }], l, { max: 500 });
+    };
+    if ($('#qEmp', el)) { $('#qEmp', el).oninput = pintaEmp; pintaEmp(); }
     $$('[data-del]', el).forEach(b => b.onclick = async () => { if (confirm('¿Eliminar este movimiento?')) { await dbDel('rh', b.dataset.del); renderApp(); } });
     const nb = $('#nuevoRH', el);
     if (nb) nb.onclick = () => dialogo('Movimiento de personal', `
@@ -180,14 +189,15 @@ registrarVista({
       <label>Persona<input id="rP" list="dlG" placeholder="Nombre completo"><datalist id="dlG">${nombresGuardias().map(g => `<option value="${esc(g)}">`).join('')}</datalist></label>
       <label>Campo<select id="rC">${nombresCampos().map(c => `<option>${esc(c)}</option>`).join('')}</select></label>
       <label>Departamento<select id="rD">${getDeptos().map(c => `<option ${norm(c) === 'seguridad' ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>
-      <label>Fecha (inicio)<input type="date" id="rF" value="${isoDia(Date.now())}"></label><label>Fecha fin (opcional, para permisos/vacaciones)<input type="date" id="rFF"></label><label>Notas<textarea id="rN" rows="2"></textarea></label>`,
+      <div id="rAlta" style="display:none"><label>Función (solo altas)<input id="rFu" placeholder="Ej. OPERATIVO"></label><label>Género<select id="rGe"><option value="">—</option><option>Masculino</option><option>Femenino</option></select></label></div><label>Fecha (inicio)<input type="date" id="rF" value="${isoDia(Date.now())}"></label><label>Fecha fin (opcional, para permisos/vacaciones)<input type="date" id="rFF"></label><label>Notas<textarea id="rN" rows="2"></textarea></label>`,
       async d => {
         const p = $('#rP', d).value.trim(); if (!p) { toast('Escriba el nombre de la persona', 'mal'); return false; }
         const reg = { tipo: $('#rT', d).value, persona: nombreCanonico(p), fecha: fromISO($('#rF', d).value) + 12 * 36e5, fechaFin: $('#rFF', d).value ? fromISO($('#rFF', d).value) + 12 * 36e5 : null };
         if (DATA.rh.some(x => claveMov(x) === claveMov(reg))) { toast('Ya existe ese mismo movimiento (misma persona, tipo y fecha). No se duplicó.', 'mal'); return false; }
-        await dbPut('rh', { tipo: $('#rT', d).value, persona: reg.persona, campo: $('#rC', d).value, depto: norm($('#rD', d).value) === 'seguridad' ? 'SEGURIDAD' : $('#rD', d).value, fecha: fromISO($('#rF', d).value) + 12 * 36e5, fechaFin: $('#rFF', d).value ? fromISO($('#rFF', d).value) + 12 * 36e5 : null, notas: $('#rN', d).value.trim() });
+        await dbPut('rh', { funcion: $('#rFu', d).value.trim() || undefined, genero: $('#rGe', d).value || undefined, tipo: $('#rT', d).value, persona: reg.persona, campo: $('#rC', d).value, depto: norm($('#rD', d).value) === 'seguridad' ? 'SEGURIDAD' : $('#rD', d).value, fecha: fromISO($('#rF', d).value) + 12 * 36e5, fechaFin: $('#rFF', d).value ? fromISO($('#rFF', d).value) + 12 * 36e5 : null, notas: $('#rN', d).value.trim() });
         toast('Movimiento registrado'); renderApp();
       });
+    if (nb) nb.addEventListener('click', () => { const dl = document.querySelector('.overlay #rT'); if (dl) { const m = () => { document.querySelector('#rAlta').style.display = dl.value === 'Alta' ? '' : 'none'; }; dl.onchange = m; m(); } });
   }
 });
 
@@ -319,7 +329,7 @@ registrarVista({
   id: 'datos', titulo: 'Importar y respaldo', icono: '📥', grupo: 'Sistema', sinFiltros: true, render(el) {
     const ult = cfgGet('ultimaImport', null);
     let h = card('Importar datos de las apps de los guardias', `<div class="drop" id="drop"><p><b>Arrastre aquí los archivos JSON</b> o <button class="btn" id="elegir">Elegir archivos</button></p>
-      <p class="nota">Acepta rondines individuales, respaldos de los paneles (rondines y accesos), incidencias y respaldos completos de este software. Los que ya estaban cargados se omiten.</p><input type="file" id="fArch" multiple accept=".json,application/json" hidden></div><div id="impMsg" class="msg"></div>` + (ult ? `<div class="nota">Última importación: ${fmtFH(ult)}</div>` : ''));
+      <p class="nota">Acepta rondines individuales, respaldos de los paneles (rondines y accesos), incidencias y respaldos completos de este software. Los que ya estaban cargados se omiten. Para cargar la plantilla de empleados (función, género, fecha de ingreso) elija el archivo RH_Control_Personal.html: solo se lee en este navegador, no se sube a ningún lado.</p><input type="file" id="fArch" multiple accept=".json,.html,.htm,application/json,text/html" hidden></div><div id="impMsg" class="msg"></div>` + (ult ? `<div class="nota">Última importación: ${fmtFH(ult)}</div>` : ''));
     const cont = (n, t) => `<tr><td>${t}</td><td>${DATA[n].length}</td></tr>`;
     h += '<div class="grid2">' + card('Datos guardados en este equipo', `<table class="tabla"><tbody>${cont('rondines', 'Rondines')}${cont('accesos', 'Accesos')}${cont('incidencias', 'Incidencias')}${cont('rh', 'Movimientos de RH')}${cont('evaluaciones', 'Evaluaciones')}${cont('operativo', 'Capturas operativas')}</tbody></table>`) +
       card('Respaldo', `<p>Descargue un respaldo completo con regularidad (USB, correo o nube): los datos viven solo en el navegador de este equipo.</p><button class="btn" id="resp">Descargar respaldo completo (JSON)</button>

@@ -68,3 +68,4 @@ img.ine{height:30px;width:auto;max-width:56px;object-fit:cover;border-radius:4px
 .mapa{flex-shrink:0;min-height:200px}h3.sec{margin:6px 0 10px;font-size:15px}
 .tabs{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0 14px;border-bottom:1px solid var(--borde)}.tabs button{background:none;border:0;border-bottom:3px solid transparent;padding:9px 14px;color:var(--tx2);font:inherit;cursor:pointer}.tabs button[aria-selected=true]{color:#fff;border-bottom-color:var(--ac);font-weight:600}.rp-sec[hidden]{display:none}.take{margin:0 0 10px;line-height:1.5}.bad{color:var(--mal)}.warn{color:var(--warn)}.ok{color:var(--ok)}.tabla.wrap td{white-space:normal;min-width:110px;line-height:1.35;vertical-align:top}.tabla.wrap td:nth-child(n+4){min-width:180px}
 .tabla-w.sinmax{max-height:none}
+.buscar{margin-left:12px;padding:5px 10px;border-radius:8px;border:1px solid var(--borde);background:var(--panel2);color:var(--tx);font:inherit;font-weight:400;min-width:200px}
