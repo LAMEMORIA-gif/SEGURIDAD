@@ -306,7 +306,8 @@ async function importarArchivos(files) {
       if (data && data._unificado && data.datos) { await restaurarRespaldo(data, false); cuenta.otros++; continue; }
       if (data && Array.isArray(data.incidencias_agregadas)) {
         const nuevas = LEGADO.convArchivoIncidencias(data, DATA.incidencias);
-        nuevas.forEach(o => { if (!vistos.incidencias.has(o.id)) cuenta.incidencias++; vistos.incidencias.add(o.id); lotes.incidencias.push(o); });
+        const edIds = new Set(DATA.incidencias.filter(x => x.editadoEn).map(x => x.id)); // lo corregido en el ERP no se pisa al volver a importar
+        nuevas.forEach(o => { if (edIds.has(o.id)) { cuenta.duplicados++; return; } if (!vistos.incidencias.has(o.id)) cuenta.incidencias++; vistos.incidencias.add(o.id); lotes.incidencias.push(o); });
         continue;
       }
       if (data && (Array.isArray(data.capturas_nuevas) || Array.isArray(data.llamadas_atencion) || Array.isArray(data.plantilla_eventos))) {
@@ -343,6 +344,7 @@ async function importarArchivos(files) {
         if (!o.id) o.id = uid(t);
         if (t === 'incidencias' && typeof o.fecha === 'string') { const p = Date.parse(o.fecha); if (isNaN(p)) { cuenta.error++; return; } o.fecha = p; }
         if (t === 'incidencias' && !o.campo) o.campo = 'Otros';
+        if (t === 'incidencias' && o.origen === 'legado' && DATA.incidencias.some(x => x.id === o.id && x.editadoEn)) { cuenta.duplicados++; return; }
         if (t === 'operativo' && o.origen === 'legado' && (DATA.operativo.some(x => x.origen !== 'legado' && x.fecha === o.fecha && x.campo === o.campo) || DATA.operativo.some(x => x.id === o.id && x.editadoEn))) { cuenta.duplicados++; return; }
         if (vistos[t].has(o.id)) { if (o.origen === 'legado') lotes[t].push(o); else cuenta.duplicados++; return; }
         vistos[t].add(o.id); lotes[t].push(o); cuenta[t]++;
