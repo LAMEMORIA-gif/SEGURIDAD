@@ -123,6 +123,7 @@ registrarVista({
 });
 
 // ============ INCIDENCIAS ============
+const setSel = (s, val) => { if (val == null || val === '') return; if (![...s.options].some(o => o.value === String(val))) { const o = document.createElement('option'); o.value = o.textContent = String(val); s.appendChild(o); } s.value = String(val); };
 const SUBCAT_PS = ['Galeras Palomas', 'Galeras Empaque'];
 const esPS = i => /previsi/i.test(i.depto || '');
 const subcatPS = i => esPS(i) ? (SUBCAT_PS.find(s => norm(s) === norm(i.punto || i.subcat)) || 'Sin subcategoría') : '';
@@ -137,11 +138,11 @@ registrarVista({
     const ps = inc.filter(esPS);
     if (ps.length) h += card('Previsión Social por subcategoría', barras(groupCount(ps, subcatPS), { color: COL.verde }) + '<div class="nota">Total Previsión Social: ' + ps.length + ' incidencia(s).</div>');
     h += cardApoyoResumen(inc, true);
-    h += card('Registro de incidencias', tabla([{ t: 'Fecha', f: i => fmtFecha(i.fecha) }, { t: 'Campo', f: i => i.campo }, { t: 'Departamento', f: i => i.depto || '—' }, { t: 'Subcategoría', f: i => subcatPS(i) || '—' }, { t: 'Problema', f: i => i.problema }, { t: 'Peso', h: 1, f: i => pill(pesoDe(i), pesoDe(i) >= 4 ? 'mal' : pesoDe(i) >= 3 ? 'warn' : 'ok') }, { t: 'Autoridad', f: i => { const x = apoyoDe(i); return x ? AUT_ETQ[x.ap] : '—'; } }, { t: 'Descripción', f: i => i.descripcion || '' }, { t: '', h: 1, f: i => puedeEditar() ? `<button class="mini" data-del="${i.id}">Eliminar</button>` : '' }], inc));
+    h += card('Registro de incidencias', tabla([{ t: 'Fecha', f: i => fmtFecha(i.fecha) }, { t: 'Campo', f: i => i.campo }, { t: 'Departamento', f: i => i.depto || '—' }, { t: 'Subcategoría', f: i => subcatPS(i) || '—' }, { t: 'Problema', f: i => i.problema }, { t: 'Peso', h: 1, f: i => pill(pesoDe(i), pesoDe(i) >= 4 ? 'mal' : pesoDe(i) >= 3 ? 'warn' : 'ok') }, { t: 'Autoridad', f: i => { const x = apoyoDe(i); return x ? AUT_ETQ[x.ap] : '—'; } }, { t: 'Descripción', f: i => i.descripcion || '' }, { t: '', h: 1, f: i => puedeEditar() ? `<button class="mini" data-edit="${i.id}">Editar</button> <button class="mini" data-del="${i.id}">Eliminar</button>` : '' }], inc));
     el.innerHTML = h;
     $$('[data-del]', el).forEach(b => b.onclick = async () => { if (confirm('¿Eliminar esta incidencia?')) { await dbDel('incidencias', b.dataset.del); renderApp(); } });
-    const nb = $('#nuevaInc', el);
-    if (nb) nb.onclick = () => { const dlg = dialogo('Registrar incidencia', `
+    const abrirInc = reg => {
+      const ed = !!reg, dlg = dialogo(ed ? 'Editar incidencia' : 'Registrar incidencia', `
       <label>Fecha<input type="date" id="iF" value="${isoDia(Date.now())}"></label>
       <label>Campo<select id="iC">${nombresCampos().map(c => `<option>${esc(c)}</option>`).join('')}</select></label>
       <label>Departamento<select id="iD">${getDeptos().map(c => `<option>${esc(c)}</option>`).join('')}</select></label>
@@ -151,12 +152,17 @@ registrarVista({
       <label>Apoyo de la autoridad<select id="iAp"><option value="">Detectar automáticamente</option><option value="N">Sin apoyo de la autoridad</option><option value="M">Policía municipal</option><option value="G">Guardia civil estatal</option><option value="MG">Policía municipal y guardia civil</option></select></label>`,
       async d => {
         const p = $('#iP', d).value, dep = $('#iD', d).value;
-        await dbPut('incidencias', { punto: esPS({ depto: dep }) ? $('#iSub', d).value : '', fecha: fromISO($('#iF', d).value) + 12 * 36e5, campo: $('#iC', d).value, depto: $('#iD', d).value, problema: p, peso: (getCatalogo().find(c => c.nombre === p) || {}).peso || 1, descripcion: $('#iDesc', d).value.trim(), accion: $('#iAcc', d).value.trim(), apoyoManual: $('#iAp', d).value, por: SESION.nombre });
-        toast('Incidencia registrada'); renderApp();
-      });
+        const datos = { punto: esPS({ depto: dep }) ? $('#iSub', d).value : '', fecha: fromISO($('#iF', d).value) + 12 * 36e5, campo: $('#iC', d).value, depto: dep, problema: p, peso: (getCatalogo().find(c => c.nombre === p) || {}).peso || (ed ? reg.peso : 1) || 1, descripcion: $('#iDesc', d).value.trim(), accion: $('#iAcc', d).value.trim(), apoyoManual: $('#iAp', d).value };
+        await dbPut('incidencias', ed ? { ...reg, ...datos, editadoPor: SESION.nombre, editadoEn: Date.now() } : { ...datos, por: SESION.nombre });
+        toast(ed ? 'Incidencia actualizada' : 'Incidencia registrada'); renderApp();
+      }, ed ? 'Guardar cambios' : undefined);
       const mostrar = () => { $('#iSubL', dlg).style.display = esPS({ depto: $('#iD', dlg).value }) ? '' : 'none'; };
-      $('#iD', dlg).onchange = mostrar; mostrar();
+      $('#iD', dlg).onchange = mostrar;
+      if (ed) { $('#iF', dlg).value = isoDia(reg.fecha); setSel($('#iC', dlg), reg.campo); setSel($('#iD', dlg), reg.depto); setSel($('#iP', dlg), reg.problema); $('#iSub', dlg).value = reg.punto && SUBCAT_PS.includes(reg.punto) ? reg.punto : (SUBCAT_PS.find(s => norm(s) === norm(reg.punto)) || ''); $('#iDesc', dlg).value = reg.descripcion || ''; $('#iAcc', dlg).value = reg.accion || ''; $('#iAp', dlg).value = reg.apoyoManual || ''; }
+      mostrar();
     };
+    const nb = $('#nuevaInc', el); if (nb) nb.onclick = () => abrirInc();
+    $$('[data-edit]', el).forEach(b => b.onclick = () => abrirInc(DATA.incidencias.find(x => x.id === b.dataset.edit)));
   }
 });
 
@@ -173,7 +179,7 @@ registrarVista({
     h += '<div class="grid2">' + card('Movimientos por tipo', barras(groupCount(rh, x => x.tipo), { color: COL.azul })) + card('Inasistencias por departamento', barras(groupCount(por('Inasistencia'), x => x.depto), { color: COL.rojo })) + '</div>';
     const pl = construirPlantilla();
     h += `<section class="card"><h3>Empleados <input id="qEmp" class="buscar" placeholder="Buscar empleado..."> <span class="nota" id="cEmp"></span></h3>${pl.length && !cfgGet('plantilla_base_rh', []).length ? '<p class="nota bad">Solo se muestran los empleados con alta o baja registrada. Para ver toda la plantilla, vaya a <b>Importar y respaldo</b> y elija el archivo RH_Control_Personal.html.</p>' : ''}${pl.length ? '<div id="tEmp"></div>' : '<div class="vacio">Aún no hay plantilla cargada. En <b>Importar y respaldo</b> elija el archivo RH_Control_Personal.html para leer la plantilla de empleados.</div>'}</section>`;
-    h += card('Registro', tabla([{ t: 'Fecha', f: x => fmtFecha(x.fecha) }, { t: 'Tipo', f: x => x.tipo }, { t: 'Persona', f: x => x.persona }, { t: 'Campo', f: x => x.campo || '—' }, { t: 'Depto.', f: x => x.depto || '—' }, { t: 'Días', f: x => ['Alta', 'Baja'].includes(x.tipo) ? '—' : diasRH(x) }, { t: 'Notas', f: x => x.notas || '' }, { t: '', h: 1, f: x => puedeEditar() ? `<button class="mini" data-del="${x.id}">Eliminar</button>` : '' }], rh));
+    h += card('Registro', tabla([{ t: 'Fecha', f: x => fmtFecha(x.fecha) }, { t: 'Tipo', f: x => x.tipo }, { t: 'Persona', f: x => x.persona }, { t: 'Campo', f: x => x.campo || '—' }, { t: 'Depto.', f: x => x.depto || '—' }, { t: 'Días', f: x => ['Alta', 'Baja'].includes(x.tipo) ? '—' : diasRH(x) }, { t: 'Notas', f: x => x.notas || '' }, { t: '', h: 1, f: x => puedeEditar() ? `<button class="mini" data-edit="${x.id}">Editar</button> <button class="mini" data-del="${x.id}">Eliminar</button>` : '' }], rh));
     el.innerHTML = h;
     const pintaEmp = () => {
       const q = ($('#qEmp', el) ? $('#qEmp', el).value : '').toLowerCase().trim(), l = pl.filter(e => !q || e.empleado.toLowerCase().includes(q));
@@ -183,8 +189,8 @@ registrarVista({
     };
     if ($('#qEmp', el)) { $('#qEmp', el).oninput = pintaEmp; pintaEmp(); }
     $$('[data-del]', el).forEach(b => b.onclick = async () => { if (confirm('¿Eliminar este movimiento?')) { await dbDel('rh', b.dataset.del); renderApp(); } });
-    const nb = $('#nuevoRH', el);
-    if (nb) nb.onclick = () => dialogo('Movimiento de personal', `
+    const abrirRH = reg => {
+      const ed = !!reg, dlg = dialogo(ed ? 'Editar movimiento de personal' : 'Movimiento de personal', `
       <label>Tipo<select id="rT">${TIPOS_RH.map(t => `<option>${t}</option>`).join('')}</select></label>
       <label>Persona<input id="rP" list="dlG" placeholder="Nombre completo"><datalist id="dlG">${nombresGuardias().map(g => `<option value="${esc(g)}">`).join('')}</datalist></label>
       <label>Campo<select id="rC">${nombresCampos().map(c => `<option>${esc(c)}</option>`).join('')}</select></label>
@@ -192,12 +198,19 @@ registrarVista({
       <div id="rAlta" style="display:none"><label>Función (solo altas)<input id="rFu" placeholder="Ej. OPERATIVO"></label><label>Género<select id="rGe"><option value="">—</option><option>Masculino</option><option>Femenino</option></select></label></div><label>Fecha (inicio)<input type="date" id="rF" value="${isoDia(Date.now())}"></label><label>Fecha fin (opcional, para permisos/vacaciones)<input type="date" id="rFF"></label><label>Notas<textarea id="rN" rows="2"></textarea></label>`,
       async d => {
         const p = $('#rP', d).value.trim(); if (!p) { toast('Escriba el nombre de la persona', 'mal'); return false; }
-        const reg = { tipo: $('#rT', d).value, persona: nombreCanonico(p), fecha: fromISO($('#rF', d).value) + 12 * 36e5, fechaFin: $('#rFF', d).value ? fromISO($('#rFF', d).value) + 12 * 36e5 : null };
-        if (DATA.rh.some(x => claveMov(x) === claveMov(reg))) { toast('Ya existe ese mismo movimiento (misma persona, tipo y fecha). No se duplicó.', 'mal'); return false; }
-        await dbPut('rh', { funcion: $('#rFu', d).value.trim() || undefined, genero: $('#rGe', d).value || undefined, tipo: $('#rT', d).value, persona: reg.persona, campo: $('#rC', d).value, depto: norm($('#rD', d).value) === 'seguridad' ? 'SEGURIDAD' : $('#rD', d).value, fecha: fromISO($('#rF', d).value) + 12 * 36e5, fechaFin: $('#rFF', d).value ? fromISO($('#rFF', d).value) + 12 * 36e5 : null, notas: $('#rN', d).value.trim() });
-        toast('Movimiento registrado'); renderApp();
-      });
-    if (nb) nb.addEventListener('click', () => { const dl = document.querySelector('.overlay #rT'); if (dl) { const m = () => { document.querySelector('#rAlta').style.display = dl.value === 'Alta' ? '' : 'none'; }; dl.onchange = m; m(); } });
+        const ff = $('#rFF', d).value ? fromISO($('#rFF', d).value) + 12 * 36e5 : null;
+        const datos = { funcion: $('#rFu', d).value.trim() || undefined, genero: $('#rGe', d).value || undefined, tipo: $('#rT', d).value, persona: nombreCanonico(p), campo: $('#rC', d).value, depto: norm($('#rD', d).value) === 'seguridad' ? 'SEGURIDAD' : $('#rD', d).value, fecha: fromISO($('#rF', d).value) + 12 * 36e5, fechaFin: ff, notas: $('#rN', d).value.trim() };
+        if (DATA.rh.some(x => x.id !== (reg && reg.id) && claveMov(x) === claveMov(datos))) { toast('Ya existe ese mismo movimiento (misma persona, tipo y fecha). No se duplicó.', 'mal'); return false; }
+        await dbPut('rh', ed ? { ...reg, ...datos, editadoPor: SESION.nombre, editadoEn: Date.now() } : { ...datos, por: SESION.nombre });
+        toast(ed ? 'Movimiento actualizado' : 'Movimiento registrado'); renderApp();
+      }, ed ? 'Guardar cambios' : undefined);
+      const m = () => { $('#rAlta', dlg).style.display = $('#rT', dlg).value === 'Alta' ? '' : 'none'; };
+      $('#rT', dlg).onchange = m;
+      if (ed) { setSel($('#rT', dlg), reg.tipo); $('#rP', dlg).value = reg.persona || ''; setSel($('#rC', dlg), reg.campo); setSel($('#rD', dlg), reg.depto); $('#rF', dlg).value = isoDia(reg.fecha); $('#rFF', dlg).value = reg.fechaFin ? isoDia(reg.fechaFin) : ''; $('#rN', dlg).value = reg.notas || ''; $('#rFu', dlg).value = reg.funcion || ''; setSel($('#rGe', dlg), reg.genero); }
+      m();
+    };
+    const nb = $('#nuevoRH', el); if (nb) nb.onclick = () => abrirRH();
+    $$('[data-edit]', el).forEach(b => b.onclick = () => abrirRH(DATA.rh.find(x => x.id === b.dataset.edit)));
   }
 });
 
@@ -284,6 +297,10 @@ registrarVista({
 
 // ============ CONTROL OPERATIVO DE CAMPO ============
 const lunesDe = ts => { const d = new Date(ts); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d.getTime(); };
+const OP_GRUPOS = [
+  ['Control de accesos', [['regProg', 'Rev. físicas regionales programadas'], ['regReal', 'Rev. físicas regionales realizadas'], ['acasProg', 'Rev. físicas acasillados programadas'], ['acasReal', 'Rev. físicas acasillados realizadas'], ['visProg', 'Rev. físicas visitantes programadas'], ['visReal', 'Rev. físicas visitantes realizadas'], ['provProg', 'Rev. físicas proveedores programadas'], ['provReal', 'Rev. físicas proveedores realizadas'], ['saludosEsp', 'Saludos esperados'], ['saludosReal', 'Saludos realizados'], ['vehProg', 'Rev. vehiculares programadas'], ['vehReal', 'Rev. vehiculares realizadas'], ['puertasAbiertas', 'Puertas abiertas detectadas'], ['accesosSinRev', 'Accesos sin revisión'], ['protocolosInc', 'Protocolos incorrectos'], ['accesosAbiertos', 'Accesos abiertos'], ['trailers', 'Tráilers con fruta'], ['sellosRev', 'Sellos revisados'], ['cajasSinSello', 'Cajas sin sellos de seguridad'], ['roboComb', 'Robos de combustible'], ['roboFruta', 'Robos de fruta'], ['roboMat', 'Robos de materiales'], ['golosinas', 'Golosinas diversas (decomiso)'], ['cigarros', 'Cigarros (decomiso)'], ['articulos', 'Artículos personales (decomiso)'], ['drogas', 'Drogas (decomiso)'], ['sinFicha', 'No cuentan con ficha'], ['envasesVidrio', 'Envases de vidrio (decomiso)']]],
+  ['Rondines', [['rondProg', 'Rondines programados'], ['rondReal', 'Rondines realizados'], ['evidencia', 'Evidencia fotográfica'], ['novDet', 'Novedades detectadas'], ['novCorr', 'Novedades corregidas'], ['acoso', 'Acoso sexual (reportes)'], ['faltasResp', 'Faltas de respeto a ingenieros'], ['discusion', 'Discusión entre personas'], ['excesoVel', 'Exceso de velocidad'], ['maltratoJorn', 'Mal trato a jornaleros']]],
+  ['Inocuidad', [['bitTotales', 'Bitácoras totales'], ['bitMaltratadas', 'Bitácoras maltratadas'], ['bitBuenEstado', 'Bitácoras en buen estado']]]];
 registrarVista({
   id: 'operativo', titulo: 'Control operativo de campo', icono: '🌾', grupo: 'Seguridad', render(el) {
     const op = V.operativo().sort((a, b) => b.fecha - a.fecha);
@@ -298,29 +315,48 @@ registrarVista({
     const inocPorCampo = Object.fromEntries(Object.entries(_ic).map(([k, v]) => [k, Math.round(sum(v) / v.length)]));
     h += '<div class="grid2">' + card('Cumplimiento de rondines por semana (%)', lineas([{ nombre: '% realizados', color: COL.azul, valores: ks.map(k => sem[k].p ? Math.round(sem[k].r / sem[k].p * 100) : 0) }], ks.map(k => k.slice(8) + '/' + k.slice(5, 7)), { max: 100 })) +
       card('Inocuidad por campo (%)', barras(inocPorCampo, { color: COL.verde, fmt: v => v + '%' })) + '</div>';
-    h += card('Capturas', tabla([{ t: 'Semana del', f: x => fmtFecha(x.fecha) }, { t: 'Campo', f: x => x.campo }, { t: 'Rondines prog.', f: x => x.rondinesProg }, { t: 'Rondines real.', f: x => x.rondinesReal }, { t: 'Cumpl.', h: 1, f: x => +x.rondinesProg ? pill(pct(+x.rondinesReal, +x.rondinesProg) + '%', semaforo(pct(+x.rondinesReal, +x.rondinesProg), 90, 75)) : '—' }, { t: 'Accesos', f: x => x.accesosReg }, { t: 'Inocuidad %', f: x => x.inocuidad === '' ? '—' : x.inocuidad }, { t: 'Observaciones', f: x => x.obs || '' }, { t: '', h: 1, f: x => puedeEditar() ? `<button class="mini" data-del="${x.id}">Eliminar</button>` : '' }], op));
+    h += card('Capturas', tabla([{ t: 'Semana del', f: x => fmtFecha(x.fecha) }, { t: 'Campo', f: x => x.campo }, { t: 'Rondines prog.', f: x => x.rondinesProg }, { t: 'Rondines real.', f: x => x.rondinesReal }, { t: 'Cumpl.', h: 1, f: x => +x.rondinesProg ? pill(pct(+x.rondinesReal, +x.rondinesProg) + '%', semaforo(pct(+x.rondinesReal, +x.rondinesProg), 90, 75)) : '—' }, { t: 'Accesos', f: x => x.accesosReg }, { t: 'Inocuidad %', f: x => x.inocuidad === '' ? '—' : x.inocuidad }, { t: 'Observaciones', f: x => x.obs || '' }, { t: '', h: 1, f: x => puedeEditar() ? `<button class="mini" data-edit="${x.id}">Editar</button> <button class="mini" data-del="${x.id}">Eliminar</button>` : '' }], op));
     el.innerHTML = h;
     $$('[data-del]', el).forEach(b => b.onclick = async () => { if (confirm('¿Eliminar esta captura?')) { await dbDel('operativo', b.dataset.del); renderApp(); } });
     const nb = $('#nuevoOp', el);
-    if (nb) nb.onclick = () => {
-      const d = dialogo('Captura semanal de campo', `<label>Semana (elija cualquier día de la semana)<input type="date" id="oF" value="${isoDia(Date.now() - 7 * 864e5)}"></label>
-        <label>Campo<select id="oC">${nombresCampos().map(c => `<option>${esc(c)}</option>`).join('')}</select></label>
-        <button class="btn sec" id="oAuto" type="button">Autollenar con datos importados</button>
-        <label>Rondines programados<input type="number" id="oRP" min="0"></label><label>Rondines realizados<input type="number" id="oRR" min="0"></label>
-        <label>Accesos registrados<input type="number" id="oAR" min="0"></label><label>Cumplimiento de inocuidad % (opcional)<input type="number" id="oI" min="0" max="100"></label><label>Observaciones<textarea id="oO" rows="2"></textarea></label>`,
+    const abrirOp = reg => {
+      const ed = !!reg, r = (reg && reg.raw) || {};
+      if (reg && !reg.raw) { r.rondProg = reg.rondinesProg; r.rondReal = reg.rondinesReal; r.acasReal = reg.accesosReg; }
+      const ini0 = reg ? reg.fecha : lunesDe(Date.now() - 7 * 864e5), s0 = semISO(ini0);
+      const campos = nombresCampos(); if (reg && reg.campo && !campos.includes(reg.campo)) campos.push(reg.campo);
+      const grupos = OP_GRUPOS.map(g => `<h4>${g[0]}</h4><div class="opgrid">${g[1].map(f => `<label>${f[1]} *<input type="number" min="0" step="1" data-k="${f[0]}" value="${r[f[0]] != null && r[f[0]] !== '' ? +r[f[0]] : 0}"></label>`).join('')}</div>`).join('');
+      const d = dialogo(ed ? 'Editar captura semanal de campo' : 'Agregar captura semanal de campo', `<h4>Identificación de la semana</h4>
+        <div class="opgrid"><label style="grid-column:span 2">Campo / ubicación *<select id="oC">${campos.map(c => `<option${reg && reg.campo === c ? ' selected' : ''}>${esc(c)}</option>`).join('')}</select></label>
+        <label>Año *<input type="number" id="oA" min="2020" max="2100" value="${r.anio || s0.anio}"></label><label>Semana (1-53) *<input type="number" id="oS" min="1" max="53" value="${r.sem || s0.sem}"></label>
+        <label>Fecha inicio<input type="date" id="oF" value="${isoDia(ini0)}"></label><label>Fecha fin<input type="date" id="oFF" value="${isoDia(ini0 + 6 * 864e5)}" disabled></label></div>
+        <div class="barra-acc"><button class="btn sec" id="oAuto" type="button">Autollenar rondines y accesos con datos de la app</button></div>
+        ${grupos}<label>Observaciones / acción recomendada<textarea id="oO" rows="2">${esc(reg && reg.obs || '')}</textarea></label>`,
         async d => {
-          const ini = lunesDe(fromISO($('#oF', d).value));
-          const ex = DATA.operativo.find(x => x.fecha === ini && x.campo === $('#oC', d).value);
-          await dbPut('operativo', { id: ex ? ex.id : undefined, fecha: ini, campo: $('#oC', d).value, rondinesProg: $('#oRP', d).value, rondinesReal: $('#oRR', d).value, accesosReg: $('#oAR', d).value, inocuidad: $('#oI', d).value, obs: $('#oO', d).value.trim() });
+          const anio = +$('#oA', d).value, sem = +$('#oS', d).value, campo = $('#oC', d).value;
+          if (!campo || !anio || !sem || sem < 1 || sem > 53) { toast('Indique campo, año y semana (1-53)'); return false; }
+          const ini = LEGADO.lunesISO(anio, sem), raw = { ubicacion: campo, anio, sem };
+          $$('[data-k]', d).forEach(i => raw[i.dataset.k] = Math.max(0, +i.value || 0));
+          const ex = DATA.operativo.find(x => x.fecha === ini && x.campo === campo && (!reg || x.id !== reg.id));
+          if (ex && !confirm('Ya existe una captura de ' + campo + ' para la semana ' + sem + '. ¿Reemplazarla con esta?')) return false;
+          const base = reg || ex || {};
+          const inoc = raw.bitTotales ? Math.round((raw.bitTotales - raw.bitMaltratadas) / raw.bitTotales * 100) : '';
+          await dbPut('operativo', { ...base, id: base.id, fecha: ini, campo, punto: campo, rondinesProg: raw.rondProg, rondinesReal: raw.rondReal, accesosReg: raw.acasReal, inocuidad: inoc, obs: $('#oO', d).value.trim(), raw, origen: 'manual', ...(ed || ex ? { editadoPor: SESION.nombre, editadoEn: Date.now() } : { por: SESION.nombre }) });
+          if (ex && reg && ex.id !== reg.id) await dbDel('operativo', ex.id);
           toast('Captura guardada'); renderApp();
-        });
+        }, 'Guardar captura');
+      d.firstElementChild.classList.add('ancho');
+      const deSem = () => { const a = +$('#oA', d).value, w = +$('#oS', d).value; if (a && w) { const t = LEGADO.lunesISO(a, w); $('#oF', d).value = isoDia(t); $('#oFF', d).value = isoDia(t + 6 * 864e5); } };
+      const deFecha = () => { const v = $('#oF', d).value; if (!v) return; const t = lunesDe(fromISO(v)), q = semISO(t); $('#oA', d).value = q.anio; $('#oS', d).value = q.sem; $('#oFF', d).value = isoDia(t + 6 * 864e5); };
+      $('#oA', d).oninput = deSem; $('#oS', d).oninput = deSem; $('#oF', d).onchange = deFecha;
       $('#oAuto', d).onclick = () => {
-        const ini = lunesDe(fromISO($('#oF', d).value)), fin = ini + 7 * 864e5 - 1, c = $('#oC', d).value;
-        $('#oRR', d).value = DATA.rondines.filter(r => r.inicio >= diaIni(ini) && r.inicio <= fin && normCampo(r.area) === c).length;
-        $('#oAR', d).value = DATA.accesos.filter(a => a.horaIngreso >= diaIni(ini) && a.horaIngreso <= fin && normCampo(a.campo) === c).length;
-        toast('Rondines realizados y accesos llenados; capture programados e inocuidad');
+        const ini = LEGADO.lunesISO(+$('#oA', d).value, +$('#oS', d).value), fin = ini + 7 * 864e5 - 1, c = $('#oC', d).value;
+        $('[data-k=rondReal]', d).value = DATA.rondines.filter(r => r.inicio >= diaIni(ini) && r.inicio <= fin && normCampo(r.area) === c).length;
+        $('[data-k=acasReal]', d).value = DATA.accesos.filter(a => a.horaIngreso >= diaIni(ini) && a.horaIngreso <= fin && normCampo(a.campo) === c).length;
+        toast('Rondines realizados y accesos llenados; capture el resto');
       };
     };
+    if (nb) nb.onclick = () => abrirOp(null);
+    $$('[data-edit]', el).forEach(b => b.onclick = () => abrirOp(DATA.operativo.find(x => x.id === b.dataset.edit)));
   }
 });
 

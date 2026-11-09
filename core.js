@@ -319,7 +319,7 @@ async function importarArchivos(files) {
         const kLl = new Set(DATA.evaluaciones.filter(x => x.tipo === 'llamada' && x.origen !== 'legado').map(claveLlam));
         const kMov = new Set(DATA.rh.filter(x => x.origen !== 'legado').map(claveMov));
         const evOk = lotesDesemp.filter(x => !(x.tipo === 'semanal' ? kSem.has(claveEvSem(x)) : kLl.has(claveLlam(x))));
-        const rhOk = rhNuevos.filter(x => !kMov.has(claveMov(x)));
+        const rhOk = rhNuevos.filter(x => !kMov.has(claveMov(x)) && !DATA.rh.some(y => y.id === x.id && y.editadoEn));
         cuenta.duplicados += (lotesDesemp.length - evOk.length) + (rhNuevos.length - rhOk.length);
         if (evOk.length) await dbPutMany('evaluaciones', evOk);
         if (rhOk.length) await dbPutMany('rh', rhOk);
@@ -330,7 +330,7 @@ async function importarArchivos(files) {
         const claves = new Set(DATA.rh.map(LEGADO.claveRH).filter(Boolean)), nuevosRH = [], kMan = new Set(DATA.rh.filter(x => x.origen !== 'legado').map(claveMov));
         lista.forEach(o => {
           const r = LEGADO.esVacRH(o) ? LEGADO.convVacRH(o) : LEGADO.convFaltaRH(o), k = LEGADO.claveRH(r);
-          if (claves.has(k) || kMan.has(claveMov(r))) { cuenta.duplicados++; return; }
+          if (claves.has(k) || kMan.has(claveMov(r)) || DATA.rh.some(x => x.id === r.id && x.editadoEn)) { cuenta.duplicados++; return; }
           claves.add(k); nuevosRH.push(r); cuenta.rhMov++;
         });
         if (nuevosRH.length) await dbPutMany('rh', nuevosRH);
@@ -343,6 +343,7 @@ async function importarArchivos(files) {
         if (!o.id) o.id = uid(t);
         if (t === 'incidencias' && typeof o.fecha === 'string') { const p = Date.parse(o.fecha); if (isNaN(p)) { cuenta.error++; return; } o.fecha = p; }
         if (t === 'incidencias' && !o.campo) o.campo = 'Otros';
+        if (t === 'operativo' && o.origen === 'legado' && (DATA.operativo.some(x => x.origen !== 'legado' && x.fecha === o.fecha && x.campo === o.campo) || DATA.operativo.some(x => x.id === o.id && x.editadoEn))) { cuenta.duplicados++; return; }
         if (vistos[t].has(o.id)) { if (o.origen === 'legado') lotes[t].push(o); else cuenta.duplicados++; return; }
         vistos[t].add(o.id); lotes[t].push(o); cuenta[t]++;
       });
