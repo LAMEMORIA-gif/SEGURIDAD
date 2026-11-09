@@ -60,31 +60,30 @@ const ETQ_COMP = { inc: 'Incidencias', ron: 'Rondines', acc: 'Accesos', rh: 'Per
 
 registrarVista({
   id: 'riesgo', titulo: 'Análisis de riesgo', icono: '🛡️', grupo: 'General', render(el) {
-    const rs = calcRiesgoPorCampo();
-    const [d, h] = rangoPeriodo();
-    const prev = d ? calcRiesgoPorCampo([d - (h - d + 1), d - 1]) : null;
-    const glob = riesgoGlobal(rs), globPrev = prev ? riesgoGlobal(prev) : null;
-    const vis = rs.filter(r => !F.campo || r.campo === F.campo);
-    const delta = (r) => { if (!prev) return ''; const p = prev.find(x => x.campo === r.campo); if (!p) return ''; const dd = r.puntos - p.puntos; return dd === 0 ? '＝' : dd > 0 ? '▲ +' + dd : '▼ ' + dd; };
+    const o = rpCompute(), k = o.kpi, sec = rpTabsHTML(o), ev = o.eval;
     let hh = `<div class="barra-acc"><button class="btn" id="rPrint">Imprimir / guardar PDF</button><button class="btn sec" id="rHtml">Descargar informe HTML</button></div><div id="informe">`;
-    hh += `<div class="informe-t"><h2>Análisis de riesgo · Rancho Agrícola La Memoria</h2><p>Periodo: ${esc(etiquetaPeriodo())}${F.campo ? ' · Campo: ' + esc(F.campo) : ''}</p></div>`;
-    hh += '<div class="kpis">' + kpi(glob.puntos, 'Índice general de riesgo', glob.nivelClase, glob.nivel + (globPrev ? ' · antes: ' + globPrev.puntos : '')) +
-      kpi(vis.reduce((s, r) => s + r.incidencias, 0), 'Incidencias', '', sum(vis, r => r.graves) + ' graves') + kpi(sum(vis, r => r.huecos.length), 'Huecos de rondines', sum(vis, r => r.huecos.length) ? 'mal' : 'ok') +
-      kpi(sum(vis, r => r.exced + r.restr), 'Alertas de acceso', sum(vis, r => r.exced + r.restr) ? 'warn' : 'ok') + kpisApoyo(V.incidencias()) + '</div>';
-    hh += card('Índice de riesgo por campo', tabla([
+    hh += `<div class="informe-t"><h2>Análisis de riesgo · Rancho Agrícola La Memoria</h2><p>Incidencias del ${esc(rpDl(k.inc_desde))} al ${esc(rpDl(k.inc_hasta))} · control operativo del ${esc(rpDl(k.op_desde))} al ${esc(rpDl(k.op_hasta))} · Periodo: ${esc(etiquetaPeriodo())}${F.campo ? ' · Campo: ' + esc(F.campo) : ''}</p></div>`;
+    hh += `<p class="take">Previsión Social concentra <b>${rpPc(k.ps_pct)}</b> de las incidencias; <b>${rpPc(k.malla_pct)}</b> involucran la malla perimetral y <b>${rpPc(k.alc_pct)}</b> alcohol.</p>`;
+    hh += `<p class="take"><b>${o.resumenMA.criticas}</b> alertas críticas y <b>${o.resumenMA.atencion}</b> de atención; <b>${o.resumenMA.cumplen}</b> de <b>${o.resumenMA.total}</b> metas cumplidas. Detalle en la pestaña Metas y alertas.</p>`;
+    hh += '<div class="kpis">' + kpi(k.incidencias, 'Incidencias registradas') + kpi(rpPc(k.indice), 'Índice de riesgo (puntos ÷ máximo posible)', k.indice == null ? '' : k.indice >= 70 ? 'mal' : k.indice >= 35 ? 'warn' : 'ok') + kpi(rpPc(k.pct_cierre), 'Casos cerrados') + kpi(rpPc(k.ps_pts_pct), 'Del riesgo está en Previsión Social') +
+      kpi(rpPc(k.rond_cumpl), 'Rondines realizados vs. programados') + kpi(rpFn(k.decomisos), 'Artículos decomisados en accesos') + kpi(rpPc(k.apoyo_pct), 'Incidencias con apoyo de policía municipal o guardia civil') + '</div>';
+    hh += `<section class="card"><h3>Evaluación general de la seguridad: <span class="${ev.cls}">${esc(ev.nivel)}</span></h3><p class="take">${esc(ev.s)}</p><div class="grid2"><div><h4>Lo que va bien</h4><ul>${ev.ok.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div><div><h4>Lo que preocupa</h4><ul>${ev.bad.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div></div><h4>Recomendación para mejorar</h4><p>Para bajar el riesgo, atender primero estas tres acciones del plan de mejoras (el detalle completo está en esa pestaña):</p><ol>${ev.rec.map(r => `<li>${esc(r.ambito)}: ${esc(r.accion)}</li>`).join('')}</ol></section>`;
+    hh += '<div class="tabs" role="tablist">' + rpTabs.map(([id, t]) => `<button role="tab" data-t="${id}" aria-selected="${id === RP_TAB}">${t}</button>`).join('') + '</div>';
+    // índice ponderado por campo (rondines, accesos y personal) — se muestra en "Campos y áreas"
+    const rs = calcRiesgoPorCampo(), [d, h] = rangoPeriodo(), prev = d ? calcRiesgoPorCampo([d - (h - d + 1), d - 1]) : null, glob = riesgoGlobal(rs), globPrev = prev ? riesgoGlobal(prev) : null, vis = rs.filter(r => !F.campo || r.campo === F.campo);
+    const delta = (r) => { if (!prev) return ''; const p = prev.find(x => x.campo === r.campo); if (!p) return ''; const dd = r.puntos - p.puntos; return dd === 0 ? '＝' : dd > 0 ? '▲ +' + dd : '▼ ' + dd; };
+    const pond = card('Índice ponderado por campo (incidencias, rondines, accesos y personal)', `<p class="nota">Índice general ${glob.puntos} · ${esc(glob.nivel)}${globPrev ? ' · antes: ' + globPrev.puntos : ''}</p>` + tabla([
       { t: 'Campo', f: r => r.campo }, { t: 'Riesgo', h: 1, f: r => pill(r.puntos + ' · ' + r.nivel, r.clase) }, { t: 'Cambio', f: delta },
-      ...Object.keys(ETQ_COMP).map(k => ({ t: ETQ_COMP[k], h: 1, f: r => r.comp[k] == null ? '<span class="nota">sin datos</span>' : pill(Math.round(r.comp[k]), nivelRiesgo(r.comp[k])[1]) })),
+      ...Object.keys(ETQ_COMP).map(kk => ({ t: ETQ_COMP[kk], h: 1, f: r => r.comp[kk] == null ? '<span class="nota">sin datos</span>' : pill(Math.round(r.comp[kk]), nivelRiesgo(r.comp[kk])[1]) })),
       { t: 'Principal problema', f: r => r.top ? r.top[0] + ' (' + r.top[1] + ')' : '—' }
-    ], vis) + `<div class="nota">Método: índice 0-100 = promedio ponderado de Incidencias (40%, severidad por semana; 10 puntos/semana = 100), Rondines (25%, faltante de cumplimiento + huecos; sin rondines con historial = 100), Accesos (20%, visitas con tiempo excedido y lista restringida) y Personal (15%, inasistencias por semana). Los componentes sin datos se excluyen y los pesos se reajustan. Niveles: Bajo &lt;25, Medio 25-49, Alto 50-74, Crítico ≥75.</div>`);
-    // tendencia semanal de severidad
-    const semanas = {}; DATA.incidencias.filter(i => enPeriodo(i.fecha) && (!F.campo || i.campo === F.campo)).forEach(i => { const k = isoDia(lunesDe(i.fecha)); semanas[k] = (semanas[k] || 0) + pesoDe(i); });
-    const ks = Object.keys(semanas).sort();
-    hh += '<div class="grid2">' + card('Severidad de incidencias por semana (puntos)', lineas([{ nombre: 'Puntos', color: COL.rojo, valores: ks.map(k => semanas[k]) }], ks.map(k => k.slice(8) + '/' + k.slice(5, 7)))) +
-      card('Severidad por departamento (puntos)', barras(vis.flatMap(r => r.incList).reduce((m, i) => { const k = i.depto || 'Sin especificar'; m[k] = (m[k] || 0) + pesoDe(i); return m; }, {}), { color: COL.naranja })) + '</div>';
-    { const inc = V.incidencias(), ra = resumenApoyo(inc); hh += cardApoyoResumen(inc, false) + (ra.total ? card('Intervenciones de la autoridad por campo', tabla([{ t: 'Campo', f: x => x.campo }, { t: 'Incidencias', f: x => x.incidencias }, { t: 'Con apoyo', f: x => x.apoyos }, { t: 'Solo municipal', f: x => x.municipal }, { t: 'Solo guardia civil', f: x => x.guardia }, { t: 'Ambas', f: x => x.ambas }, { t: '% incid.', f: x => x.pct + ' %' }], ra.porCampo)) + cardApoyoPlegable('Últimas intervenciones', ra.lista.slice(0, 15), 3) : '') + (ra.pct >= 10 ? `<div class="nota"><b>Observación:</b> ${esc(ra.pct)} % de las incidencias requirió a la policía municipal o a la guardia civil estatal; conviene reforzar la prevención y la coordinación con la autoridad en los campos con más intervenciones.</div>` : ''); }
-    hh += card('Propuestas de mejora según el riesgo', vis.filter(r => r.puntos > 0 || r.incidencias || r.rondines).sort((a, b) => b.puntos - a.puntos).map(r => `<div class="prop"><h4>${esc(r.campo)} ${pill(r.puntos + ' · ' + r.nivel, r.clase)}</h4><ul>${sugerencias(r).map(s => `<li>${esc(s)}</li>`).join('')}</ul></div>`).join('') || '<div class="vacio">Sin datos suficientes en este periodo</div>');
+    ], vis) + `<div class="nota">Método: índice 0-100 = promedio ponderado de Incidencias (40%, severidad por semana; 10 puntos/semana = 100), Rondines (25%, faltante de cumplimiento + huecos), Accesos (20%, visitas con tiempo excedido y lista restringida) y Personal (15%, inasistencias por semana). Los componentes sin datos se excluyen y los pesos se reajustan. Niveles: Bajo &lt;25, Medio 25-49, Alto 50-74, Crítico ≥75.</div>`) +
+      card('Propuestas de mejora por campo (rondines, accesos y personal)', vis.filter(r => r.puntos > 0 || r.incidencias || r.rondines).sort((a, b) => b.puntos - a.puntos).map(r => `<div class="prop"><h4>${esc(r.campo)} ${pill(r.puntos + ' · ' + r.nivel, r.clase)}</h4><ul>${sugerencias(r).map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>`).join('') || '<div class="vacio">Sin datos suficientes en este periodo</div>');
+    sec.t4 = sec.t4.replace('<div id="rpPond"></div>', pond);
+    hh += rpTabs.map(([id]) => `<div class="rp-sec" id="${id}" ${id === RP_TAB ? '' : 'hidden'}>${sec[id]}</div>`).join('');
     hh += '</div>';
     el.innerHTML = hh;
+    $$('.tabs [data-t]', el).forEach(b => b.onclick = () => { RP_TAB = b.dataset.t; $$('.tabs [data-t]', el).forEach(x => x.setAttribute('aria-selected', x === b)); $$('.rp-sec', el).forEach(x => x.hidden = x.id !== RP_TAB); });
+    const bc = $('#rpApCsv', el); if (bc) bc.onclick = () => { const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; const fl = [['Fecha', 'Campo', 'Incidencia', 'Autoridad', 'Resultado', 'Estatus']].concat(o.apoyo.lista.map(filaApoyo).map(x => [fmtFecha(x.fecha), x.campo, x.problema, x.autoridad, x.resultado, x.estatus])); descargar('apoyo_policial_' + isoDia(Date.now()) + '.csv', '﻿' + fl.map(f => f.map(q).join(',')).join('\r\n'), 'text/csv;charset=utf-8'); };
     $('#rPrint', el).onclick = () => window.print();
     $('#rHtml', el).onclick = async () => {
       let css = ''; try { css = await (await fetch('app.css')).text(); } catch (e) { }

@@ -20,7 +20,7 @@
     const cat = x.cat === 'Riña' ? 'Riñas' : x.cat;
     return {
       id: 'inc_' + (x._ownId || x.num), num: x.num, fecha: diaTs(x.fecha), campo: campoLegado(x.campo), depto: deptoLegado(x.depto), problema: cat,
-      peso: x.peso != null ? x.peso : 1, descripcion: x.desc || '', accion: x.sol || '', estatus: x.estatus || '', punto: x.subcat || x.campoOriginal || '',
+      peso: x.peso != null ? x.peso : 1, descripcion: x.desc || '', accion: x.sol || '', estatus: x.estatus || '', m: x.m != null ? x.m : undefined, a: x.a != null ? x.a : undefined, punto: x.subcat || x.campoOriginal || '',
       fAviso: x.f_aviso || '', fSol: x.f_sol || '', origen: 'legado'
     };
   }
