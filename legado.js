@@ -11,7 +11,7 @@
     if (s.includes('palomas') || s.includes('almacen general')) return 'Palomas';
     return String(txt || '').trim() || 'Otros';
   }
-  const DEPTOS = ['Almacén General', 'Empaque', 'Labores', 'Mantenimiento', 'Plagas', 'Previsión Social', 'RH', 'Producción', 'Riego', 'Nóminas', 'Inocuidad'];
+  const DEPTOS = ['Almacén General', 'Empaque', 'Labores', 'Mantenimiento', 'Plagas', 'Previsión Social', 'RH', 'Producción', 'Riego', 'Nóminas', 'Inocuidad', 'Seguridad'];
   function deptoLegado(t) { const x = n(t); return DEPTOS.find(d => n(d) === x) || String(t || '').trim(); }
   function diaTs(s) { const [y, m, d] = String(s).slice(0, 10).split('-').map(Number); return new Date(y, m - 1, d, 12).getTime(); }
   function esIncLegado(o) { return !!(o && typeof o === 'object' && o.num != null && o.cat && o.fecha && o.campo); }

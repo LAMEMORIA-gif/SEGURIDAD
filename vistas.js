@@ -179,13 +179,13 @@ registrarVista({
       <label>Tipo<select id="rT">${TIPOS_RH.map(t => `<option>${t}</option>`).join('')}</select></label>
       <label>Persona<input id="rP" list="dlG" placeholder="Nombre completo"><datalist id="dlG">${nombresGuardias().map(g => `<option value="${esc(g)}">`).join('')}</datalist></label>
       <label>Campo<select id="rC">${nombresCampos().map(c => `<option>${esc(c)}</option>`).join('')}</select></label>
-      <label>Departamento<select id="rD">${getDeptos().map(c => `<option>${esc(c)}</option>`).join('')}</select></label>
+      <label>Departamento<select id="rD">${getDeptos().map(c => `<option ${norm(c) === 'seguridad' ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>
       <label>Fecha (inicio)<input type="date" id="rF" value="${isoDia(Date.now())}"></label><label>Fecha fin (opcional, para permisos/vacaciones)<input type="date" id="rFF"></label><label>Notas<textarea id="rN" rows="2"></textarea></label>`,
       async d => {
         const p = $('#rP', d).value.trim(); if (!p) { toast('Escriba el nombre de la persona', 'mal'); return false; }
         const reg = { tipo: $('#rT', d).value, persona: nombreCanonico(p), fecha: fromISO($('#rF', d).value) + 12 * 36e5, fechaFin: $('#rFF', d).value ? fromISO($('#rFF', d).value) + 12 * 36e5 : null };
         if (DATA.rh.some(x => claveMov(x) === claveMov(reg))) { toast('Ya existe ese mismo movimiento (misma persona, tipo y fecha). No se duplicó.', 'mal'); return false; }
-        await dbPut('rh', { tipo: $('#rT', d).value, persona: reg.persona, campo: $('#rC', d).value, depto: $('#rD', d).value, fecha: fromISO($('#rF', d).value) + 12 * 36e5, fechaFin: $('#rFF', d).value ? fromISO($('#rFF', d).value) + 12 * 36e5 : null, notas: $('#rN', d).value.trim() });
+        await dbPut('rh', { tipo: $('#rT', d).value, persona: reg.persona, campo: $('#rC', d).value, depto: norm($('#rD', d).value) === 'seguridad' ? 'SEGURIDAD' : $('#rD', d).value, fecha: fromISO($('#rF', d).value) + 12 * 36e5, fechaFin: $('#rFF', d).value ? fromISO($('#rFF', d).value) + 12 * 36e5 : null, notas: $('#rN', d).value.trim() });
         toast('Movimiento registrado'); renderApp();
       });
   }

@@ -101,7 +101,7 @@ function dbClear(store) { return new Promise((res, rej) => { const rq = dbTx(sto
 function cfgGet(clave, def) { const r = DATA.config.find(x => x.id === clave); return r ? r.valor : def; }
 function cfgSet(clave, valor) { return dbPut('config', { id: clave, valor }); }
 const getCampos = () => cfgGet('campos', CAMPOS_DEF);
-const getDeptos = () => cfgGet('deptos', DEPTOS_DEF);
+const getDeptos = () => { const l = cfgGet('deptos', DEPTOS_DEF).slice(); if (!l.some(d => norm(d) === 'seguridad')) l.push('Seguridad'); return l; };
 const getCatalogo = () => cfgGet('catalogo', CATALOGO_DEF);
 const getPlantilla = () => cfgGet('plantilla', PLANTILLA_DEF);
 const nombresCampos = () => getCampos().map(c => c.nombre);
