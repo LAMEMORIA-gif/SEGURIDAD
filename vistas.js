@@ -31,7 +31,8 @@ document.addEventListener('click', e => {
 // ============ RESUMEN GERENCIAL ============
 registrarVista({
   id: 'resumen', titulo: 'Resumen gerencial', icono: '📊', grupo: 'General', render(el) {
-    const rs = V.rondines(), ac = V.accesos(), inc = V.incidencias(), rh = V.rh();
+    const rs = V.rondines(), ac = V.accesos(), inc = V.incidencias(), rh = V.rh(), [opD, opH] = rangoPeriodo(), opv = DATA.operativo.filter(x => x.fecha >= (opD || 0) - 6 * 864e5 && x.fecha <= opH && enCampo(x.campo)); // misma ventana que el índice: incluye la semana que empezó antes del periodo
+    const opPts = opv.map(puntajeOperativo).filter(v => v != null), opProm = opPts.length ? Math.round(sum(opPts, v => v) / opPts.length) : null;
     const cumpl = rs.length ? Math.round(sum(rs, cumplimientoRondin) / rs.length * 10) / 10 : 0;
     const falt = rondinesFaltantes().filter(f => !F.campo || f.campo === F.campo);
     const dentro = DATA.accesos.filter(a => !a.horaSalida && enCampo(a.campo));
@@ -47,6 +48,7 @@ registrarVista({
       kpi(ac.length, 'Accesos registrados', '', dentro.length + ' dentro ahora') +
       kpi(exced.length, 'Visitas con tiempo excedido', exced.length ? 'mal' : 'ok') +
       kpi(inc.length, 'Incidencias', graves.length ? 'warn' : '', graves.length + ' graves (peso ≥4)') +
+      kpi(opProm == null ? '—' : opProm, 'Riesgo de control operativo (0-100)', opProm == null ? '' : nivelRiesgo(opProm)[1] === 'crit' ? 'mal' : nivelRiesgo(opProm)[1], opv.length + ' capturas semanales') +
       kpi(rh.filter(x => x.tipo === 'Inasistencia').length, 'Inasistencias (RH)', '') + kpisApoyo(inc) + '</div>';
     // alertas
     const al = [];
@@ -61,7 +63,7 @@ registrarVista({
     const filas = riesgos.filter(r => !F.campo || r.campo === F.campo);
     h += card('Situación por campo', tabla([
       { t: 'Campo', f: r => r.campo }, { t: 'Rondines', f: r => r.rondines }, { t: 'Cumpl. %', f: r => r.rondines ? r.cumpl + '%' : '—' },
-      { t: 'Accesos', f: r => r.accesos }, { t: 'Incidencias', f: r => r.incidencias }, { t: 'Inasist.', f: r => r.inasist },
+      { t: 'Accesos', f: r => r.accesos }, { t: 'Incidencias', f: r => r.incidencias }, { t: 'Operativo', h: 1, f: r => r.comp.op == null ? '—' : pill(Math.round(r.comp.op), nivelRiesgo(r.comp.op)[1]) }, { t: 'Inasist.', f: r => r.inasist },
       { t: 'Riesgo', h: 1, f: r => pill(r.puntos + ' · ' + r.nivel, r.clase) }
     ], filas));
     h += '<div class="grid2">' + card('Incidencias por campo', barras(groupCount(inc, i => i.campo), { color: COL.naranja })) +

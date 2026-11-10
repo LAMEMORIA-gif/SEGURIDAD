@@ -1,7 +1,23 @@
 /* Seguridad La Memoria — análisis de riesgo (índice 0-100 por campo) */
 'use strict';
 
-const PESOS_RIESGO = { inc: 40, ron: 25, acc: 20, rh: 15 };
+const PESOS_RIESGO = { inc: 35, ron: 20, op: 20, acc: 15, rh: 10 };
+// Puntuación de riesgo 0-100 de una captura semanal de control operativo (misma metodología que la app OPERATIVO)
+function puntajeOperativo(x) {
+  const v = x.raw || {};
+  if (v.puntuacionRiesgo != null && v.puntuacionRiesgo !== '' && !isNaN(+v.puntuacionRiesgo)) return Math.min(100, Math.max(0, +v.puntuacionRiesgo));
+  const n = k => +v[k] || 0;
+  const tieneDetalle = ['regProg', 'visProg', 'provProg', 'vehProg', 'trailers', 'bitTotales'].some(k => n(k) > 0);
+  if (!tieneDetalle) { // capturas antiguas solo con rondines
+    const p = n('rondProg') || +x.rondinesProg || 0, r = n('rondReal') || +x.rondinesReal || 0;
+    return p ? Math.round((1 - Math.min(r / p, 1)) * 100) : null;
+  }
+  const progAcc = n('regProg') + n('visProg') + n('provProg') + n('saludosEsp') + n('vehProg'), realAcc = n('regReal') + n('visReal') + n('provReal') + n('saludosReal') + n('vehReal');
+  const pctAccesos = progAcc === 0 ? 0 : realAcc / progAcc, pctSellos = n('trailers') === 0 ? 1 : n('sellosRev') / n('trailers');
+  const pctBitacoras = n('bitTotales') === 0 ? 0 : n('bitBuenEstado') / n('bitTotales'), robos = n('roboComb') + n('roboFruta') + n('roboMat');
+  const pctRond = n('rondProg') === 0 ? 0 : Math.min(n('rondReal') / n('rondProg'), 1) * 0.5 + (n('rondReal') === 0 ? 0 : Math.min(n('evidencia') / n('rondReal'), 1)) * 0.25 + (n('novDet') === 0 ? 1 : Math.min(n('novCorr') / n('novDet'), 1)) * 0.25;
+  return Math.min(100, Math.round(((1 - pctAccesos) * 20 + (1 - pctSellos) * 5 + (1 - pctBitacoras) * 10 + Math.min(robos / 3, 1) * 15 + (1 - pctRond) * 10) * (100 / 60) * 10) / 10);
+}
 const nivelRiesgo = p => p >= 75 ? ['Crítico', 'crit'] : p >= 50 ? ['Alto', 'mal'] : p >= 25 ? ['Medio', 'warn'] : ['Bajo', 'ok'];
 
 // Calcula el índice para cada campo en el rango [d, h] (ignora el filtro de campo para poder comparar)
@@ -29,15 +45,18 @@ function calcRiesgoPorCampo(rango) {
     const restr = ac.filter(restringido).length;
     if (hayAccesos && ac.length) comp.acc = Math.min(100, pct(exced, ac.length) * 2 + restr * 30);
     if (hayRH) comp.rh = Math.min(100, (rh.length / sem) / 5 * 100);
+    // control operativo: promedio de la puntuación de riesgo de las semanas capturadas del campo (la semana cuenta si su lunes cae en el periodo o hasta 6 días antes)
+    const ops = DATA.operativo.filter(x => x.fecha >= (d || 0) - 6 * 864e5 && x.fecha <= h && normCampo(x.campo) === campo).map(puntajeOperativo).filter(v => v != null);
+    if (ops.length) comp.op = Math.round(sum(ops, v => v) / ops.length * 10) / 10;
     let tot = 0, pes = 0; Object.keys(comp).forEach(k => { tot += comp[k] * PESOS_RIESGO[k]; pes += PESOS_RIESGO[k]; });
     const puntos = pes ? Math.round(tot / pes) : 0; const [nivel, clase] = nivelRiesgo(puntos);
     const probs = groupCount(inc, i => i.problema); const top = Object.entries(probs).sort((a, b) => b[1] - a[1])[0];
     const deps = groupCount(inc, i => i.depto); const topD = Object.entries(deps).sort((a, b) => b[1] - a[1])[0];
-    return { campo, puntos, nivel, clase, comp, rondines: rs.length, cumpl, accesos: ac.length, incidencias: inc.length, inasist: rh.length, exced, restr, huecos, graves, ptsInc, top, topD, incList: inc };
+    return { campo, puntos, nivel, clase, comp, opSem: ops.length, rondines: rs.length, cumpl, accesos: ac.length, incidencias: inc.length, inasist: rh.length, exced, restr, huecos, graves, ptsInc, top, topD, incList: inc };
   });
 }
 function riesgoGlobal(rs) {
-  const act = rs.filter(r => r.rondines + r.accesos + r.incidencias + r.inasist > 0);
+  const act = rs.filter(r => r.rondines + r.accesos + r.incidencias + r.inasist + (r.opSem || 0) > 0);
   if (!act.length) return { puntos: 0, nivel: 'Sin datos', nivelClase: '' };
   const prom = sum(act, r => r.puntos) / act.length, mx = Math.max(...act.map(r => r.puntos));
   const p = Math.round(.6 * prom + .4 * mx); const [n, c] = nivelRiesgo(p);
@@ -52,11 +71,12 @@ function sugerencias(r) {
   if (r.graves > 0) s.push(`${r.graves} incidencia(s) grave(s) (peso 4-5): dar seguimiento caso por caso con RH y Previsión Social y documentar las acciones.`);
   if (r.exced > 0) s.push(`${r.exced} visita(s) con permanencia excedida: reforzar en caseta el registro de salida y la verificación de tiempos.`);
   if (r.restr > 0) s.push(`${r.restr} ingreso(s) de personas/vehículos de la lista restringida: informar a gerencia y reforzar el filtro de acceso.`);
+  if (r.comp.op != null && r.comp.op >= 50) s.push(`Control operativo con riesgo ${Math.round(r.comp.op)}/100: revisar revisiones físicas en accesos, sellos de tráileres, bitácoras de inocuidad y robos reportados en la captura semanal del campo.`);
   if (r.comp.rh != null && r.comp.rh >= 50) s.push('Ausentismo alto: revisar cobertura del rol de guardias y los puntos que quedan con menos elementos.');
   if (!s.length) s.push('Sin hallazgos relevantes: mantener la supervisión actual.');
   return s;
 }
-const ETQ_COMP = { inc: 'Incidencias', ron: 'Rondines', acc: 'Accesos', rh: 'Personal' };
+const ETQ_COMP = { inc: 'Incidencias', ron: 'Rondines', op: 'Control operativo', acc: 'Accesos', rh: 'Personal' };
 
 registrarVista({
   id: 'riesgo', titulo: 'Análisis de riesgo', icono: '🛡️', grupo: 'General', render(el) {
@@ -72,12 +92,12 @@ registrarVista({
     // índice ponderado por campo (rondines, accesos y personal) — se muestra en "Campos y áreas"
     const rs = calcRiesgoPorCampo(), [d, h] = rangoPeriodo(), prev = d ? calcRiesgoPorCampo([d - (h - d + 1), d - 1]) : null, glob = riesgoGlobal(rs), globPrev = prev ? riesgoGlobal(prev) : null, vis = rs.filter(r => !F.campo || r.campo === F.campo);
     const delta = (r) => { if (!prev) return ''; const p = prev.find(x => x.campo === r.campo); if (!p) return ''; const dd = r.puntos - p.puntos; return dd === 0 ? '＝' : dd > 0 ? '▲ +' + dd : '▼ ' + dd; };
-    const pond = card('Índice ponderado por campo (incidencias, rondines, accesos y personal)', `<p class="nota">Índice general ${glob.puntos} · ${esc(glob.nivel)}${globPrev ? ' · antes: ' + globPrev.puntos : ''}</p>` + tabla([
+    const pond = card('Índice ponderado por campo (incidencias, rondines, control operativo, accesos y personal)', `<p class="nota">Índice general ${glob.puntos} · ${esc(glob.nivel)}${globPrev ? ' · antes: ' + globPrev.puntos : ''}</p>` + tabla([
       { t: 'Campo', f: r => r.campo }, { t: 'Riesgo', h: 1, f: r => pill(r.puntos + ' · ' + r.nivel, r.clase) }, { t: 'Cambio', f: delta },
       ...Object.keys(ETQ_COMP).map(kk => ({ t: ETQ_COMP[kk], h: 1, f: r => r.comp[kk] == null ? '<span class="nota">sin datos</span>' : pill(Math.round(r.comp[kk]), nivelRiesgo(r.comp[kk])[1]) })),
       { t: 'Principal problema', f: r => r.top ? r.top[0] + ' (' + r.top[1] + ')' : '—' }
-    ], vis) + `<div class="nota">Método: índice 0-100 = promedio ponderado de Incidencias (40%, severidad por semana; 10 puntos/semana = 100), Rondines (25%, faltante de cumplimiento + huecos), Accesos (20%, visitas con tiempo excedido y lista restringida) y Personal (15%, inasistencias por semana). Los componentes sin datos se excluyen y los pesos se reajustan. Niveles: Bajo &lt;25, Medio 25-49, Alto 50-74, Crítico ≥75.</div>`) +
-      card('Propuestas de mejora por campo (rondines, accesos y personal)', vis.filter(r => r.puntos > 0 || r.incidencias || r.rondines).sort((a, b) => b.puntos - a.puntos).map(r => `<div class="prop"><h4>${esc(r.campo)} ${pill(r.puntos + ' · ' + r.nivel, r.clase)}</h4><ul>${sugerencias(r).map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>`).join('') || '<div class="vacio">Sin datos suficientes en este periodo</div>');
+    ], vis) + `<div class="nota">Método: índice 0-100 = promedio ponderado de Incidencias (35%, severidad por semana; 10 puntos/semana = 100), Rondines (20%, faltante de cumplimiento + huecos), Control operativo (20%, puntuación de riesgo semanal de la captura de campo: accesos, sellos, bitácoras, robos y rondines), Accesos (15%, visitas con tiempo excedido y lista restringida) y Personal (10%, inasistencias por semana). Los componentes sin datos se excluyen y los pesos se reajustan. Niveles: Bajo &lt;25, Medio 25-49, Alto 50-74, Crítico ≥75.</div>`) +
+      card('Propuestas de mejora por campo (rondines, control operativo, accesos y personal)', vis.filter(r => r.puntos > 0 || r.incidencias || r.rondines || r.opSem).sort((a, b) => b.puntos - a.puntos).map(r => `<div class="prop"><h4>${esc(r.campo)} ${pill(r.puntos + ' · ' + r.nivel, r.clase)}</h4><ul>${sugerencias(r).map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>`).join('') || '<div class="vacio">Sin datos suficientes en este periodo</div>');
     sec.t4 = sec.t4.replace('<div id="rpPond"></div>', pond);
     hh += rpTabs.map(([id]) => `<div class="rp-sec" id="${id}" ${id === RP_TAB ? '' : 'hidden'}>${sec[id]}</div>`).join('');
     hh += '</div>';

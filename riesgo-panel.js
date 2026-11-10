@@ -198,7 +198,7 @@ function rpNotas(o) {
   add('Dato', 'Datos de personas excluidos', 'El informe usa campo, área, categoría, fechas y estatus; no incluye nombres ni fichas de trabajadores.');
   add('Método', 'Cómo se calcula el índice de riesgo', 'Suma de los pesos del catálogo (2 a 5) dividida entre el máximo posible (incidencias × 5), igual que en el panel de incidencias: menos de 35 % verde, de 35 a 69.9 % amarillo y 70 % o más rojo.');
   add('Método', 'Metas, alertas y recomendaciones automáticas', 'Las metas y sus límites son propuestas iniciales. Las alertas y las recomendaciones se calculan con las cifras del ERP: categorías que suben 3 o más casos en 4 semanas, campos con índice de 70 % o más, casos abiertos de más de 30 días, robos sin cerrar, rondines por debajo de 85 % y campos sin captura operativa reciente.');
-  add('Método', 'Qué datos usa esta pantalla', 'Respeta el filtro de Periodo y Campo de la parte superior. Para ver todo el historial elija Periodo: Todo. Los datos de rondines, accesos y personal del ERP se resumen además en el índice ponderado por campo (pestaña Campos y áreas).');
+  add('Método', 'Qué datos usa esta pantalla', 'Respeta el filtro de Periodo y Campo de la parte superior. Para ver todo el historial elija Periodo: Todo. Los datos de rondines, control operativo, accesos y personal del ERP se resumen además en el índice ponderado por campo (pestaña Campos y áreas).');
   o.notas = N;
 }
 function rpEval(o) {
