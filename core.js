@@ -171,7 +171,8 @@ const V = {
   accesos: () => DATA.accesos.filter(a => enPeriodo(a.horaIngreso) && enCampo(a.campo)),
   incidencias: () => DATA.incidencias.filter(i => enPeriodo(i.fecha) && enCampo(i.campo)),
   rh: () => DATA.rh.filter(x => enPeriodo(x.fecha) && enCampo(x.campo)),
-  operativo: () => DATA.operativo.filter(x => enPeriodo(x.fecha) && enCampo(x.campo))
+  // capturas semanales (fechadas el lunes): entra toda semana que se cruce con el periodo
+  operativo: () => { const [d, h] = rangoPeriodo(); return DATA.operativo.filter(x => x.fecha >= (d || 0) - 6 * 864e5 && x.fecha <= h && enCampo(x.campo)); }
 };
 
 // ---------- cálculos compartidos ----------
@@ -281,9 +282,26 @@ function construirPlantilla() {
 
 // ---------- importación de archivos JSON de las apps y paneles ----------
 async function importarArchivos(files) {
-  const cuenta = { rhMov: 0, desempeno: 0, rhPlantilla: 0, operativo: 0, rondines: 0, accesos: 0, incidencias: 0, otros: 0, error: 0, duplicados: 0 };
+  const cuenta = { rhMov: 0, desempeno: 0, rhPlantilla: 0, operativo: 0, opAct: 0, opViejo: 0, rondines: 0, accesos: 0, incidencias: 0, otros: 0, error: 0, duplicados: 0 };
   const lotes = { rondines: [], accesos: [], incidencias: [], operativo: [] };
   const vistos = { operativo: new Set(), rondines: new Set(DATA.rondines.map(x => x.id)), accesos: new Set(DATA.accesos.map(x => x.id)), incidencias: new Set(DATA.incidencias.map(x => x.id)) };
+  const opBorrar = new Set();
+  // Resumen semanal exportado por la app del guardia: reemplaza la captura de ese campo y semana (aunque se haya capturado o editado en el ERP),
+  // salvo que el archivo sea más antiguo que el que ya se importó.
+  const opGuardia = (o, archivo) => {
+    const enLote = lotes.operativo.filter(x => x.fecha === o.fecha && x.campo === o.campo);
+    const previos = DATA.operativo.filter(x => x.fecha === o.fecha && x.campo === o.campo && !opBorrar.has(x.id)).concat(enLote);
+    const expN = +o.raw._exp || 0;
+    const masNuevo = previos.find(x => x.raw && x.raw._own && (+x.raw._exp || 0) > expN);
+    if (masNuevo && expN) return 'viejo';
+    const base = previos.find(x => x.origen === 'legado') || previos[0];
+    o.id = base ? base.id : o.id; o.importadoEn = Date.now(); o.archivo = archivo; o.guardia = o.raw.guardia || '';
+    if ((o.inocuidad === '' || o.inocuidad == null) && base && base.inocuidad !== '' && base.inocuidad != null) o.inocuidad = base.inocuidad;
+    previos.forEach(x => { if (x.id !== o.id) { if (DATA.operativo.includes(x)) opBorrar.add(x.id); const i = lotes.operativo.indexOf(x); if (i >= 0) lotes.operativo.splice(i, 1); } });
+    const i = lotes.operativo.findIndex(x => x.id === o.id); if (i >= 0) lotes.operativo.splice(i, 1);
+    lotes.operativo.push(o); vistos.operativo.add(o.id);
+    return base ? 'act' : 'nuevo';
+  };
   const clasifica = o => {
     if (!o || typeof o !== 'object') return null;
     if (LEGADO.esIncLegado(o)) return 'incidencias_legado';
@@ -293,7 +311,9 @@ async function importarArchivos(files) {
     if (o.problema && o.fecha) return 'incidencias';
     return null;
   };
+  const logOp = [];
   for (const f of files) {
+    const logArch = { archivo: f.name, fecha: Date.now(), nuevos: 0, actualizados: 0, omitidos: 0, semanas: [] };
     try {
       const txt = await f.text();
       if (/\.html?$/i.test(f.name) || /^\s*<(!doctype|html)/i.test(txt.slice(0, 200))) {
@@ -345,22 +365,31 @@ async function importarArchivos(files) {
         if (t === 'incidencias' && typeof o.fecha === 'string') { const p = Date.parse(o.fecha); if (isNaN(p)) { cuenta.error++; return; } o.fecha = p; }
         if (t === 'incidencias' && !o.campo) o.campo = 'Otros';
         if (t === 'incidencias' && o.origen === 'legado' && DATA.incidencias.some(x => x.id === o.id && x.editadoEn)) { cuenta.duplicados++; return; }
+        if (t === 'operativo' && o.raw && o.raw._own) { // resumen de la app del guardia: siempre actualiza la semana de ese campo
+          const r = opGuardia(o, f.name); if (r === 'viejo') { cuenta.opViejo++; logArch.omitidos++; return; }
+          logArch.semanas.push(o.campo + ' sem ' + o.raw.sem + '/' + o.raw.anio); if (r === 'act') { cuenta.opAct++; logArch.actualizados++; } else { cuenta.operativo++; logArch.nuevos++; }
+          return;
+        }
         if (t === 'operativo' && o.origen === 'legado' && (DATA.operativo.some(x => x.origen !== 'legado' && x.fecha === o.fecha && x.campo === o.campo) || DATA.operativo.some(x => x.id === o.id && x.editadoEn))) { cuenta.duplicados++; return; }
         if (vistos[t].has(o.id)) { if (o.origen === 'legado') lotes[t].push(o); else cuenta.duplicados++; return; }
         vistos[t].add(o.id); lotes[t].push(o); cuenta[t]++;
       });
     } catch (e) { cuenta.error++; }
+    if (logArch.nuevos + logArch.actualizados + logArch.omitidos) logOp.push(logArch);
   }
+  for (const id of opBorrar) await dbDel('operativo', id);
   for (const t of Object.keys(lotes)) if (lotes[t].length) await dbPutMany(t, lotes[t]);
+  if (logOp.length) { try { const l = JSON.parse(localStorage.getItem('op_import_log') || '[]'); localStorage.setItem('op_import_log', JSON.stringify(logOp.reverse().concat(l).slice(0, 200))); } catch (e) { } }
   return cuenta;
 }
 function resumenImport(c) {
   const p = [];
   if (c.plantillaBase) p.push('plantilla base de ' + c.plantillaBase + ' empleado(s)');
   if (c.rondines) p.push(c.rondines + ' rondín(es)'); if (c.accesos) p.push(c.accesos + ' acceso(s)');
-  if (c.incidencias) p.push(c.incidencias + ' incidencia(s)'); if (c.desempeno) p.push(c.desempeno + ' registro(s) de desempeño'); if (c.rhMov) p.push(c.rhMov + ' movimiento(s) de RH'); if (c.rhPlantilla) p.push(c.rhPlantilla + ' alta(s)/baja(s) de plantilla'); if (c.operativo > 0) p.push(c.operativo + ' captura(s) operativa(s)'); if (c.otros) p.push(c.otros + ' respaldo(s) completo(s)');
+  if (c.incidencias) p.push(c.incidencias + ' incidencia(s)'); if (c.desempeno) p.push(c.desempeno + ' registro(s) de desempeño'); if (c.rhMov) p.push(c.rhMov + ' movimiento(s) de RH'); if (c.rhPlantilla) p.push(c.rhPlantilla + ' alta(s)/baja(s) de plantilla'); if (c.operativo > 0) p.push(c.operativo + ' captura(s) operativa(s)'); if (c.opAct > 0) p.push(c.opAct + ' semana(s) de control operativo actualizada(s)'); if (c.otros) p.push(c.otros + ' respaldo(s) completo(s)');
   let t = p.length ? 'Importado: ' + p.join(', ') + '.' : 'No se importó nada nuevo.';
   if (c.duplicados) t += ' ' + c.duplicados + ' ya existían.';
+  if (c.opViejo) t += ' ' + c.opViejo + ' resumen(es) de control operativo no se aplicaron porque ya se importó un envío más reciente de esa semana.';
   if (c.error) t += ' ' + c.error + ' archivo(s)/registro(s) no reconocido(s).';
   return t;
 }

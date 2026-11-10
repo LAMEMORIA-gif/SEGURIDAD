@@ -32,7 +32,7 @@
   function convOp(o) {
     return {
       id: 'op_' + o.anio + '_' + o.sem + '_' + n(o.ubicacion).replace(/ /g, '_') + (o._ownId ? '_' + String(o._ownId).slice(-6) : ''), fecha: lunesISO(o.anio, o.sem), campo: campoLegado(o.ubicacion), punto: o.ubicacion,
-      rondinesProg: o.rondProg, rondinesReal: o.rondReal, accesosReg: o.acasReal, inocuidad: '', obs: o.accionRecomendada || '', raw: o, origen: 'legado'
+      rondinesProg: o.rondProg, rondinesReal: o.rondReal, accesosReg: o.acasReal, inocuidad: +o.bitTotales ? Math.round((+o.bitTotales - (+o.bitMaltratadas || 0)) / +o.bitTotales * 100) : '', obs: o.accionRecomendada || '', raw: o, origen: 'legado'
     };
   }
   // archivo exportado "incidencias_agregadas": {incidencias_agregadas:[...], ediciones:{'orig:N':{...},'own:id':{...}}}
