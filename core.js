@@ -307,7 +307,7 @@ async function importarArchivos(files) {
       if (data && Array.isArray(data.incidencias_agregadas)) {
         const nuevas = LEGADO.convArchivoIncidencias(data, DATA.incidencias);
         const edIds = new Set(DATA.incidencias.filter(x => x.editadoEn).map(x => x.id)); // lo corregido en el ERP no se pisa al volver a importar
-        nuevas.forEach(o => { if (edIds.has(o.id)) { cuenta.duplicados++; return; } if (!vistos.incidencias.has(o.id)) cuenta.incidencias++; vistos.incidencias.add(o.id); lotes.incidencias.push(o); });
+        nuevas.forEach(o => { if (edIds.has(o.id)) { const ex = DATA.incidencias.find(x => x.id === o.id); if (ex && o.fotos && o.fotos.length && !(ex.fotos || []).length) lotes.incidencias.push({ ...ex, fotos: o.fotos, ficha: ex.ficha || o.ficha }); else cuenta.duplicados++; return; } if (!vistos.incidencias.has(o.id)) cuenta.incidencias++; vistos.incidencias.add(o.id); lotes.incidencias.push(o); });
         continue;
       }
       if (data && (Array.isArray(data.capturas_nuevas) || Array.isArray(data.llamadas_atencion) || Array.isArray(data.plantilla_eventos))) {

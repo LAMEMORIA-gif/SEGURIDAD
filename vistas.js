@@ -129,18 +129,23 @@ const setSel = (s, val) => { if (val == null || val === '') return; if (![...s.o
 const SUBCAT_PS = ['Galeras Palomas', 'Galeras Empaque'];
 const esPS = i => /previsi/i.test(i.depto || '');
 const subcatPS = i => esPS(i) ? (SUBCAT_PS.find(s => norm(s) === norm(i.punto || i.subcat)) || 'Sin subcategoría') : '';
+// fotos del formulario de incidencias (se reducen para no saturar el almacenamiento)
+let FOTOS_ED = [];
+function reducirFotoInc(file) {
+  return new Promise((ok, ko) => { const u = URL.createObjectURL(file), im = new Image(); im.onload = () => { const e = Math.min(1, 1280 / Math.max(im.width, im.height)), c = document.createElement('canvas'); c.width = Math.round(im.width * e); c.height = Math.round(im.height * e); c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); URL.revokeObjectURL(u); ok(c.toDataURL('image/jpeg', 0.72)); }; im.onerror = () => { URL.revokeObjectURL(u); ko(new Error('img')); }; im.src = u; });
+}
 registrarVista({
   id: 'incidencias', titulo: 'Incidencias', icono: '⚠️', grupo: 'Seguridad', render(el) {
     const inc = V.incidencias().sort((a, b) => b.fecha - a.fecha);
     const graves = inc.filter(i => pesoDe(i) >= 4);
-    let h = '<div class="kpis">' + kpi(inc.length, 'Incidencias') + kpi(graves.length, 'Graves (peso ≥4)', graves.length ? 'mal' : 'ok') + kpi(sum(inc, pesoDe), 'Puntos de severidad') + kpi(Object.keys(groupCount(inc, i => i.depto)).length, 'Departamentos con incidencias') + kpisApoyo(inc) + '</div>';
+    let h = '<div class="kpis">' + kpi(inc.length, 'Incidencias') + kpi(graves.length, 'Graves (peso ≥4)', graves.length ? 'mal' : 'ok') + kpi(sum(inc, pesoDe), 'Puntos de severidad') + kpi(Object.keys(groupCount(inc, i => i.depto)).length, 'Departamentos con incidencias') + kpi(pct(inc.filter(i => (i.fotos || []).some(f => f.tipo === 'ficha')).length, inc.length) + ' %', 'Con foto de la ficha de trabajo', '', inc.filter(i => (i.fotos || []).length).length + ' con fotos') + kpisApoyo(inc) + '</div>';
     if (puedeEditar()) h += `<div class="barra-acc"><button class="btn" id="nuevaInc">+ Registrar incidencia</button></div>`; else h += soloLectura();
     h += '<div class="grid2">' + card('Por campo', barras(groupCount(inc, i => i.campo), { color: COL.naranja })) + card('Por catálogo de problema', barras(groupCount(inc, i => i.problema), { color: COL.rojo })) +
       card('Por departamento', barras(groupCount(inc, i => i.depto), { color: COL.azul })) + card('Severidad por campo (puntos)', barras(inc.reduce((m, i) => { m[i.campo] = (m[i.campo] || 0) + pesoDe(i); return m; }, {}), { color: COL.rojo })) + '</div>';
     const ps = inc.filter(esPS);
     if (ps.length) h += card('Previsión Social por subcategoría', barras(groupCount(ps, subcatPS), { color: COL.verde }) + '<div class="nota">Total Previsión Social: ' + ps.length + ' incidencia(s).</div>');
     h += cardApoyoResumen(inc, true);
-    h += card('Registro de incidencias', tabla([{ t: 'Fecha', f: i => fmtFecha(i.fecha) }, { t: 'Campo', f: i => i.campo }, { t: 'Departamento', f: i => i.depto || '—' }, { t: 'Subcategoría', f: i => subcatPS(i) || '—' }, { t: 'Problema', f: i => i.problema }, { t: 'Peso', h: 1, f: i => pill(pesoDe(i), pesoDe(i) >= 4 ? 'mal' : pesoDe(i) >= 3 ? 'warn' : 'ok') }, { t: 'Autoridad', f: i => { const x = apoyoDe(i); return x ? AUT_ETQ[x.ap] : '—'; } }, { t: 'Ficha', f: i => esc(i.ficha || '—') }, { t: 'Descripción', f: i => i.descripcion || '' }, { t: 'Fotos', h: 1, f: i => (i.fotos || []).length ? `<button class="mini" data-fotos="${i.id}">📷 ${i.fotos.length}</button>` : '—' }, { t: '', h: 1, f: i => puedeEditar() ? `<button class="mini" data-edit="${i.id}">Editar</button> <button class="mini" data-del="${i.id}">Eliminar</button>` : '' }], inc));
+    h += card('Registro de incidencias', tabla([{ t: 'Fecha', f: i => fmtFecha(i.fecha) }, { t: 'Campo', f: i => i.campo }, { t: 'Departamento', f: i => i.depto || '—' }, { t: 'Subcategoría', f: i => subcatPS(i) || '—' }, { t: 'Problema', f: i => i.problema }, { t: 'Peso', h: 1, f: i => pill(pesoDe(i), pesoDe(i) >= 4 ? 'mal' : pesoDe(i) >= 3 ? 'warn' : 'ok') }, { t: 'Autoridad', f: i => { const x = apoyoDe(i); return x ? AUT_ETQ[x.ap] : '—'; } }, { t: 'Ficha', f: i => esc(i.ficha || '—') }, { t: 'Descripción', f: i => i.descripcion || '' }, { t: 'Fotos', h: 1, f: i => { const l = i.fotos || []; if (!l.length) return '—'; const orden = l.filter(f => f.tipo === 'ficha').concat(l.filter(f => f.tipo !== 'ficha')); return orden.slice(0, 2).map(f => `<img class="incfoto" src="${f.data}" data-fotos="${i.id}" loading="lazy" alt="${f.tipo === 'ficha' ? 'Ficha' : 'Evidencia'}" title="Clic para ver las fotos">`).join('') + (l.length > 2 ? ` <button class="mini" data-fotos="${i.id}">+${l.length - 2}</button>` : ''); } }, { t: '', h: 1, f: i => puedeEditar() ? `<button class="mini" data-edit="${i.id}">Editar</button> <button class="mini" data-del="${i.id}">Eliminar</button>` : '' }], inc));
     el.innerHTML = h;
     $$('[data-del]', el).forEach(b => b.onclick = async () => { if (confirm('¿Eliminar esta incidencia?')) { await dbDel('incidencias', b.dataset.del); renderApp(); } });
     $$('[data-fotos]', el).forEach(b => b.onclick = () => {
@@ -157,13 +162,22 @@ registrarVista({
       <label id="iSubL" style="display:none">Subcategoría de Previsión Social<select id="iSub"><option value="">Sin subcategoría</option>${SUBCAT_PS.map(s => `<option>${s}</option>`).join('')}</select></label>
       <label>Catálogo de problema<select id="iP">${getCatalogo().map(c => `<option value="${esc(c.nombre)}">${esc(c.nombre)} (peso ${c.peso})</option>`).join('')}</select></label>
       <label>Descripción<textarea id="iDesc" rows="3"></textarea></label><label>Acción tomada<textarea id="iAcc" rows="2"></textarea></label>
+      <label>Ficha(s) del involucrado<input id="iFicha" placeholder="Ej. 1297-1"></label>
+      <div><b style="font-size:13px">Fotos de la ficha de trabajo y evidencia</b><div class="inc-fotos-ed" id="iFotos"></div>
+      <div class="inc-fotos-btns"><label class="btn sec mini">📷 Ficha (cámara)<input type="file" accept="image/*" capture="environment" data-tf="ficha"></label><label class="btn sec mini">🖼️ Ficha (galería/archivo)<input type="file" accept="image/*" multiple data-tf="ficha"></label><label class="btn sec mini">📷 Evidencia (cámara)<input type="file" accept="image/*" capture="environment" data-tf="evidencia"></label><label class="btn sec mini">🖼️ Evidencia (galería/archivo)<input type="file" accept="image/*" multiple data-tf="evidencia"></label></div></div>
       <label>Apoyo de la autoridad<select id="iAp"><option value="">Detectar automáticamente</option><option value="N">Sin apoyo de la autoridad</option><option value="M">Policía municipal</option><option value="G">Guardia civil estatal</option><option value="MG">Policía municipal y guardia civil</option></select></label>`,
       async d => {
         const p = $('#iP', d).value, dep = $('#iD', d).value;
-        const datos = { punto: esPS({ depto: dep }) ? $('#iSub', d).value : '', fecha: fromISO($('#iF', d).value) + 12 * 36e5, campo: $('#iC', d).value, depto: dep, problema: p, peso: (getCatalogo().find(c => c.nombre === p) || {}).peso || (ed ? reg.peso : 1) || 1, descripcion: $('#iDesc', d).value.trim(), accion: $('#iAcc', d).value.trim(), apoyoManual: $('#iAp', d).value };
+        const datos = { punto: esPS({ depto: dep }) ? $('#iSub', d).value : '', fecha: fromISO($('#iF', d).value) + 12 * 36e5, campo: $('#iC', d).value, depto: dep, problema: p, peso: (getCatalogo().find(c => c.nombre === p) || {}).peso || (ed ? reg.peso : 1) || 1, descripcion: $('#iDesc', d).value.trim(), accion: $('#iAcc', d).value.trim(), apoyoManual: $('#iAp', d).value, ficha: $('#iFicha', d).value.trim(), fotos: FOTOS_ED.length ? FOTOS_ED.slice() : undefined };
         await dbPut('incidencias', ed ? { ...reg, ...datos, editadoPor: SESION.nombre, editadoEn: Date.now() } : { ...datos, por: SESION.nombre });
         toast(ed ? 'Incidencia actualizada' : 'Incidencia registrada'); renderApp();
       }, ed ? 'Guardar cambios' : undefined);
+      FOTOS_ED = ed && reg.fotos ? reg.fotos.slice() : [];
+      const pintaF = () => { $('#iFotos', dlg).innerHTML = FOTOS_ED.map((f, k) => `<div><img src="${f.data}" title="${f.tipo === 'ficha' ? 'Ficha de trabajo' : 'Evidencia'}"><button type="button" data-qf="${k}">×</button></div>`).join('') || '<span class="nota">Sin fotos</span>'; };
+      $('#iFotos', dlg).onclick = e => { const k = e.target.dataset.qf; if (k != null) { FOTOS_ED.splice(+k, 1); pintaF(); } };
+      $$('[data-tf]', dlg).forEach(inp => inp.onchange = async () => { for (const f of inp.files) { try { FOTOS_ED.push({ tipo: inp.dataset.tf, data: await reducirFotoInc(f) }); } catch (e) { toast('No se pudo leer una foto'); } } inp.value = ''; pintaF(); });
+      if (ed) $('#iFicha', dlg).value = reg.ficha || '';
+      pintaF();
       const mostrar = () => { $('#iSubL', dlg).style.display = esPS({ depto: $('#iD', dlg).value }) ? '' : 'none'; };
       $('#iD', dlg).onchange = mostrar;
       if (ed) { $('#iF', dlg).value = isoDia(reg.fecha); setSel($('#iC', dlg), reg.campo); setSel($('#iD', dlg), reg.depto); setSel($('#iP', dlg), reg.problema); $('#iSub', dlg).value = reg.punto && SUBCAT_PS.includes(reg.punto) ? reg.punto : (SUBCAT_PS.find(s => norm(s) === norm(reg.punto)) || ''); $('#iDesc', dlg).value = reg.descripcion || ''; $('#iAcc', dlg).value = reg.accion || ''; $('#iAp', dlg).value = reg.apoyoManual || ''; }
