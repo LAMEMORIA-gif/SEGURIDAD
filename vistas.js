@@ -58,6 +58,9 @@ registrarVista({
     graves.slice(0, 6).forEach(i => al.push(['mal', `Incidencia grave: ${i.problema} · ${i.campo} / ${i.depto || '—'} (${fmtFecha(i.fecha)}).`]));
     { const ra = resumenApoyo(inc); if (ra.pct >= 10) al.push(['warn', `Intervención de la autoridad: ${textoApoyo(ra)}`]); }
     riesgos.filter(r => r.nivel === 'Alto' || r.nivel === 'Crítico').forEach(r => al.push([r.nivel === 'Crítico' ? 'mal' : 'warn', `Riesgo ${r.nivel.toLowerCase()} en ${r.campo} (${r.puntos}/100).`]));
+    const env = estadoEnvios(), soR = semanasOperativo(12);
+    env.filter(a => !a.info && a.hay && a.k !== 'operativo').forEach(a => { const tarde = a.campos.filter(x => x.d == null || x.d > a.lim[1]); if (tarde.length) al.push(['warn', `${a.n.replace(/^\S+ /, '')}: sin datos recientes de ${tarde.map(x => x.campo + (x.d == null ? ' (nunca)' : ' (' + hace(x.d) + ')')).join(', ')}. Pida el archivo al guardia.`]); });
+    { const fl = soR.faltan.filter(f => f.tipo === 'falta' && (!F.campo || f.campo === F.campo)); if (fl.length) { const pc = {}; fl.forEach(f => (pc[f.campo] = pc[f.campo] || []).push(semISO(f.t).sem)); al.push(['mal', 'Control operativo pendiente: ' + Object.entries(pc).map(([c, l]) => c + ' (sem ' + l.join(', ') + ')').join('; ') + '.']); } }
     h += card('Alertas que requieren atención', al.length ? '<ul class="alertas">' + al.map(a => `<li class="${a[0]}">${esc(a[1])}</li>`).join('') + '</ul>' : '<div class="vacio ok">Sin alertas en este periodo ✔</div>');
     // tabla por campo
     const filas = riesgos.filter(r => !F.campo || r.campo === F.campo);
@@ -69,6 +72,8 @@ registrarVista({
     h += '<div class="grid2">' + card('Incidencias por campo', barras(groupCount(inc, i => i.campo), { color: COL.naranja })) +
       card('Accesos por campo', barras(groupCount(ac, a => normCampo(a.campo)), { color: COL.azul })) + '</div>';
     h += cardApoyoResumen(inc, true);
+    h += card('Envíos de las apps de guardia', htmlEnvios(env));
+    h += card('Control operativo: semanas capturadas por campo', htmlSemanasOperativo(soR));
     el.innerHTML = h;
   }
 });
@@ -337,6 +342,50 @@ function opCelda(v, fila) {
   if (fila.startsWith('P:')) { const [p, r] = OP_PARES.find(q => q[0] === fila.slice(2)); const P = v[p] || 0, R = v[r] || 0; if (!P && !R) return '<span class="nota">—</span>'; const c = P ? Math.round(Math.min(R / P, 9.99) * 100) : null; return R + ' / ' + P + (c == null ? '' : ' ' + pill(c + '%', semaforo(c, 90, 75))); }
   const n = v[fila] || 0; return n ? '<b>' + n + '</b>' : '<span class="nota">0</span>';
 }
+// ---------- control de envíos de las apps de guardia ----------
+const ultImports = () => { try { return JSON.parse(localStorage.getItem('ult_import') || '{}'); } catch (e) { return {}; } };
+const diasDesde = ts => Math.max(0, Math.floor((diaIni(Date.now()) - diaIni(ts)) / 864e5));
+const hace = d => d === 0 ? 'hoy' : d === 1 ? 'ayer' : 'hace ' + d + ' días';
+const APPS_GUARDIA = [
+  { k: 'rondines', n: '🚶 Rondines', datos: () => DATA.rondines.map(r => [normCampo(r.area), r.inicio]), lim: [2, 4] },
+  { k: 'accesos', n: '🚪 Control de acceso', datos: () => DATA.accesos.map(a => [normCampo(a.campo), a.horaIngreso]), lim: [2, 4] },
+  { k: 'incidencias', n: '⚠️ Incidencias', datos: () => DATA.incidencias.map(i => [i.campo, i.fecha]), lim: [7, 14], info: 1 },
+  { k: 'operativo', n: '🌾 Control operativo', datos: () => DATA.operativo.map(o => [o.campo, o.fecha + 6 * 864e5]), lim: [8, 15] }];
+function estadoEnvios() {
+  const campos = nombresCampos(), u = ultImports();
+  return APPS_GUARDIA.map(a => { const ult = {}; a.datos().forEach(([c, t]) => { if (t && (!ult[c] || t > ult[c])) ult[c] = t; });
+    return { ...a, imp: u[a.k], hay: Object.keys(ult).length > 0, campos: campos.map(c => ({ campo: c, t: ult[c], d: ult[c] ? diasDesde(Math.min(ult[c], Date.now())) : null })) }; });
+}
+// Semanas de control operativo: desde la primera semana registrada (máx. 12 semanas atrás) hasta la semana pasada
+function semanasOperativo(maxSem) {
+  if (!DATA.operativo.length) return { sems: [], filas: [], faltan: [] };
+  const lunHoy = lunesDe(Date.now()), primera = lunesDe(Math.min(...DATA.operativo.map(x => x.fecha))), sems = [];
+  for (let i = maxSem || 12; i >= 1; i--) { const t = lunesDe(lunHoy - i * 7 * 864e5); if (t >= primera - 864e5) sems.push(t); }
+  const filas = nombresCampos().map(c => ({ campo: c, celdas: sems.map(t => {
+    const r = DATA.operativo.find(x => x.campo === c && Math.abs(x.fecha - t) < 2 * 864e5);
+    return { t, r, dias: r ? (r.raw && r.raw._own ? +r.raw.diasCapturados || 0 : 7) : 0 }; }) }));
+  const faltan = []; filas.forEach(f => f.celdas.forEach(x => { if (!x.r) faltan.push({ campo: f.campo, t: x.t, tipo: 'falta' }); else if (x.dias && x.dias < 7) faltan.push({ campo: f.campo, t: x.t, tipo: 'incompleta', dias: x.dias }); }));
+  return { sems, filas, faltan };
+}
+const etqSem = t => { const q = semISO(t); return 'Sem ' + q.sem + ' (' + fmtFecha(t).slice(0, 5) + ')'; };
+function htmlSemanasOperativo(so) {
+  if (!so.sems.length) return '<p class="nota">Aún no hay capturas de control operativo.</p>';
+  const cel = x => !x.r ? '<span class="pill mal">❌ Falta</span>' : x.dias < 7 ? '<span class="pill warn">🟡 ' + x.dias + '/7 días</span>' : '<span class="pill ok">✅</span>';
+  const porCampo = {}; so.faltan.forEach(f => (porCampo[f.campo] = porCampo[f.campo] || []).push(f));
+  const resumen = Object.keys(porCampo).length ? '<ul class="alertas">' + Object.entries(porCampo).map(([c, l]) => { const fl = l.filter(x => x.tipo === 'falta'), inc = l.filter(x => x.tipo === 'incompleta');
+      return '<li class="' + (fl.length ? 'mal' : 'warn') + '"><b>' + esc(c) + ':</b> ' + [fl.length ? 'faltan ' + fl.map(x => 'sem ' + semISO(x.t).sem).join(', ') : '', inc.length ? 'incompletas ' + inc.map(x => 'sem ' + semISO(x.t).sem + ' (' + x.dias + '/7)').join(', ') : ''].filter(Boolean).join(' · ') + '</li>'; }).join('') + '</ul>'
+    : '<div class="vacio ok">Todas las semanas de todos los campos están capturadas ✔</div>';
+  return resumen + '<div class="tabla-w sinmax"><table class="tabla op-desg"><thead><tr><th>Campo</th>' + so.sems.map(t => '<th>' + etqSem(t) + '</th>').join('') + '</tr></thead><tbody>' +
+    so.filas.map(f => '<tr><td>' + esc(f.campo) + '</td>' + f.celdas.map(x => '<td>' + cel(x) + '</td>').join('') + '</tr>').join('') + '</tbody></table></div>' +
+    '<p class="nota">Se revisan las semanas ya cerradas (lunes a domingo), desde la primera captura registrada. La semana en curso no se cuenta como faltante. 🟡 = el guardia envió el resumen con menos de 7 días capturados.</p>';
+}
+function htmlEnvios(env) {
+  const cel = (a, x) => { if (x.d == null) return a.info ? '<span class="nota">sin registros</span>' : '<span class="pill mal">nunca</span>'; const cl = x.d <= a.lim[0] ? 'ok' : x.d <= a.lim[1] ? 'warn' : 'mal'; return '<span class="pill ' + (a.info && cl === 'mal' ? 'warn' : cl) + '">' + hace(x.d) + '</span>'; };
+  const campos = nombresCampos();
+  return '<div class="tabla-w sinmax"><table class="tabla op-desg"><thead><tr><th>App del guardia</th><th>Última importación</th>' + campos.map(c => '<th>' + esc(c) + '</th>').join('') + '</tr></thead><tbody>' +
+    env.map(a => '<tr><td>' + a.n + '</td><td>' + (a.imp ? fmtFecha(a.imp) + ' · ' + hace(diasDesde(a.imp)) : '<span class="nota">—</span>') + '</td>' + a.campos.map(x => '<td>' + cel(a, x) + '</td>').join('') + '</tr>').join('') + '</tbody></table></div>' +
+    '<p class="nota">Cada casilla indica el registro más reciente que ha llegado de ese campo. Rojo: rondines o accesos con más de 4 días sin datos, o control operativo con más de 2 semanas. En incidencias, que no haya registros puede ser normal (no hubo incidentes).</p>';
+}
 function opDesgloseHTML(regs, porCampo) {
   const cols = porCampo ? Array.from(new Set(regs.map(x => x.campo))).sort() : [];
   const sumar = l => { const v = {}; l.forEach(x => { const r = opRaw(x); Object.keys(OP_ETQ).forEach(k => v[k] = (v[k] || 0) + (+r[k] || 0)); }); return v; };
@@ -365,6 +414,7 @@ registrarVista({
     const inocPorCampo = Object.fromEntries(Object.entries(_ic).map(([k, v]) => [k, Math.round(sum(v) / v.length)]));
     h += '<div class="grid2">' + card('Cumplimiento de rondines por semana (%)', lineas([{ nombre: '% realizados', color: COL.azul, valores: ks.map(k => sem[k].p ? Math.round(sem[k].r / sem[k].p * 100) : 0) }], ks.map(k => k.slice(8) + '/' + k.slice(5, 7)), { max: 100 })) +
       card('Inocuidad por campo (%)', barras(inocPorCampo, { color: COL.verde, fmt: v => v + '%' })) + '</div>';
+    h += card('Semanas pendientes de control operativo por campo', htmlSemanasOperativo(semanasOperativo(12)));
     h += card('Desglose de la captura del guardia (suma del periodo por campo)', op.length ? opDesgloseHTML(op, true) : '<p class="nota">Sin capturas en este periodo. Importe el resumen semanal de la app de Control operativo del guardia en Datos → Importar.</p>');
     h += card('Capturas', tabla([{ t: 'Semana del', f: x => fmtFecha(x.fecha) }, { t: 'Campo', f: x => x.campo }, { t: 'Rondines prog.', f: x => x.rondinesProg }, { t: 'Rondines real.', f: x => x.rondinesReal }, { t: 'Cumpl.', h: 1, f: x => +x.rondinesProg ? pill(pct(+x.rondinesReal, +x.rondinesProg) + '%', semaforo(pct(+x.rondinesReal, +x.rondinesProg), 90, 75)) : '—' }, { t: 'Accesos', f: x => x.accesosReg }, { t: 'Inocuidad %', f: x => x.inocuidad === '' ? '—' : x.inocuidad }, { t: 'Observaciones', f: x => x.obs || '' }, { t: 'Riesgo', h: 1, f: x => { const v = puntajeOperativo(x); return v == null ? '—' : pill(Math.round(v) + ' · ' + nivelRiesgo(v)[0], nivelRiesgo(v)[1]); } }, { t: 'Origen / actualización', f: x => x.raw && x.raw._own ? '📱 App guardia' + (x.guardia || x.raw.guardia ? ' · ' + (x.guardia || x.raw.guardia) : '') + (x.raw.diasCapturados ? ' · ' + x.raw.diasCapturados + '/7 días' : '') + (x.importadoEn ? ' · importado ' + fmtFecha(x.importadoEn) + ' ' + new Date(x.importadoEn).toTimeString().slice(0, 5) : '') + (x.archivo ? ' · ' + x.archivo : '') : x.origen === 'manual' ? '✍️ ERP' + (x.editadoPor || x.por ? ' · ' + (x.editadoPor || x.por) : '') : 'Archivo anterior' }, { t: '', h: 1, f: x => `<button class="mini" data-ver="${x.id}">Ver detalle</button> ` + (puedeEditar() ? `<button class="mini" data-edit="${x.id}">Editar</button> <button class="mini" data-del="${x.id}">Eliminar</button>` : '') }], op));
     let logOp = []; try { logOp = JSON.parse(localStorage.getItem('op_import_log') || '[]'); } catch (e) { }

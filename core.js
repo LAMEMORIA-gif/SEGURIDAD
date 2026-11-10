@@ -379,6 +379,12 @@ async function importarArchivos(files) {
   }
   for (const id of opBorrar) await dbDel('operativo', id);
   for (const t of Object.keys(lotes)) if (lotes[t].length) await dbPutMany(t, lotes[t]);
+  try { // fecha de la última importación con datos nuevos de cada app (para el resumen gerencial)
+    const u = JSON.parse(localStorage.getItem('ult_import') || '{}'), t = Date.now();
+    if (cuenta.rondines) u.rondines = t; if (cuenta.accesos) u.accesos = t; if (cuenta.incidencias) u.incidencias = t;
+    if (cuenta.operativo || cuenta.opAct) u.operativo = t; if (cuenta.rhMov || cuenta.rhPlantilla || cuenta.plantillaBase) u.rh = t; if (cuenta.desempeno) u.desempeno = t;
+    localStorage.setItem('ult_import', JSON.stringify(u));
+  } catch (e) { }
   if (logOp.length) { try { const l = JSON.parse(localStorage.getItem('op_import_log') || '[]'); localStorage.setItem('op_import_log', JSON.stringify(logOp.reverse().concat(l).slice(0, 200))); } catch (e) { } }
   return cuenta;
 }
