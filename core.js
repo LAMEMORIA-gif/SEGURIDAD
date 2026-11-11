@@ -147,7 +147,8 @@ const puedeEditar = () => SESION && (SESION.rol === 'admin' || SESION.rol === 's
 const esAdmin = () => SESION && SESION.rol === 'admin';
 
 // ---------- filtro global de periodo y campo ----------
-const F = { periodo: '7d', desde: '', hasta: '', campo: '' };
+const F = { periodo: '7d', desde: '', hasta: '', campo: '', mesSel: '', q: '' };
+let MAX_FILAS = 150; // filas visibles en las tablas largas; "Mostrar más" lo aumenta y cualquier cambio de filtro lo reinicia
 function rangoPeriodo() {
   const hoy = Date.now(); let d, h = diaFin(hoy);
   switch (F.periodo) {
@@ -157,6 +158,8 @@ function rangoPeriodo() {
     case 'mes': { const x = new Date(); d = new Date(x.getFullYear(), x.getMonth(), 1).getTime(); break; }
     case 'mesant': { const x = new Date(); d = new Date(x.getFullYear(), x.getMonth() - 1, 1).getTime(); h = new Date(x.getFullYear(), x.getMonth(), 0, 23, 59, 59, 999).getTime(); break; }
     case 'custom': d = F.desde ? fromISO(F.desde) : 0; h = F.hasta ? diaFin(fromISO(F.hasta)) : h; break;
+    case 'mesesp': { const [a, m] = (F.mesSel || '').split('-').map(Number); if (a && m) { d = new Date(a, m - 1, 1).getTime(); h = new Date(a, m, 0, 23, 59, 59, 999).getTime(); } else d = 0; break; }
+    case 'anio': { const a = new Date().getFullYear(); d = new Date(a, 0, 1).getTime(); break; }
     default: d = 0;
   }
   return [d, h];
@@ -164,15 +167,23 @@ function rangoPeriodo() {
 function etiquetaPeriodo() { const [d, h] = rangoPeriodo(); return d ? fmtFecha(d) + ' al ' + fmtFecha(h) : 'Todo el historial'; }
 const enPeriodo = ts => { const [d, h] = rangoPeriodo(); return ts >= d && ts <= h; };
 const enCampo = c => !F.campo || normCampo(c) === F.campo;
+// búsqueda de texto libre (nombre, empresa, placas, guardia, problema, folio…): todas las palabras deben aparecer
+const sinAcento = t => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+function textoDe(o, prof) {
+  if (o == null) return ''; if (typeof o !== 'object') { const t = String(o); return t.length > 300 ? '' : t; }
+  if ((prof || 0) > 2) return '';
+  return Object.keys(o).filter(k => !/^(fotos?|foto[A-Z]\w*|ine\w*|img\w*|imagen\w*|firma\w*|evidencia\w*|_\w*)$/i.test(k)).map(k => textoDe(o[k], (prof || 0) + 1)).join(' ');
+}
+const enTexto = o => { if (!F.q.trim()) return true; const t = sinAcento(textoDe(o)); return sinAcento(F.q).split(/\s+/).filter(Boolean).every(w => t.includes(w)); };
 
 // vistas de los datos ya filtradas por periodo y campo
 const V = {
-  rondines: () => DATA.rondines.filter(r => enPeriodo(r.inicio) && enCampo(r.area)),
-  accesos: () => DATA.accesos.filter(a => enPeriodo(a.horaIngreso) && enCampo(a.campo)),
-  incidencias: () => DATA.incidencias.filter(i => enPeriodo(i.fecha) && enCampo(i.campo)),
-  rh: () => DATA.rh.filter(x => enPeriodo(x.fecha) && enCampo(x.campo)),
+  rondines: () => DATA.rondines.filter(r => enPeriodo(r.inicio) && enCampo(r.area) && enTexto(r)),
+  accesos: () => DATA.accesos.filter(a => enPeriodo(a.horaIngreso) && enCampo(a.campo) && enTexto(a)),
+  incidencias: () => DATA.incidencias.filter(i => enPeriodo(i.fecha) && enCampo(i.campo) && enTexto(i)),
+  rh: () => DATA.rh.filter(x => enPeriodo(x.fecha) && enCampo(x.campo) && enTexto(x)),
   // capturas semanales (fechadas el lunes): entra toda semana que se cruce con el periodo
-  operativo: () => { const [d, h] = rangoPeriodo(); return DATA.operativo.filter(x => x.fecha >= (d || 0) - 6 * 864e5 && x.fecha <= h && enCampo(x.campo)); }
+  operativo: () => { const [d, h] = rangoPeriodo(); return DATA.operativo.filter(x => x.fecha >= (d || 0) - 6 * 864e5 && x.fecha <= h && enCampo(x.campo) && enTexto(x)); }
 };
 
 // ---------- cálculos compartidos ----------
@@ -426,16 +437,26 @@ function renderNav() {
   $$('#nav .nav-b').forEach(b => b.onclick = () => { irA(b.dataset.v); document.body.classList.remove('menu-abierto'); });
 }
 function barraFiltros() {
-  const per = [['hoy', 'Hoy'], ['7d', 'Últimos 7 días'], ['30d', 'Últimos 30 días'], ['mes', 'Este mes'], ['mesant', 'Mes anterior'], ['todo', 'Todo'], ['custom', 'Personalizado']];
+  const per = [['hoy', 'Hoy'], ['7d', 'Últimos 7 días'], ['30d', 'Últimos 30 días'], ['mes', 'Este mes'], ['mesant', 'Mes anterior'], ['mesesp', 'Elegir mes…'], ['anio', 'Este año'], ['todo', 'Todo'], ['custom', 'Rango de fechas…']];
+  if (F.periodo === 'mesesp' && !F.mesSel) { const x = new Date(); F.mesSel = x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0'); }
+  const activos = F.periodo !== '7d' || F.campo || F.q;
   $('#filtros').innerHTML = `<label>Periodo <select id="fPer">${per.map(p => `<option value="${p[0]}" ${F.periodo === p[0] ? 'selected' : ''}>${p[1]}</option>`).join('')}</select></label>
-    <span id="fCustom" style="display:${F.periodo === 'custom' ? 'inline-flex' : 'none'};gap:6px"><input type="date" id="fDesde" value="${F.desde}"><input type="date" id="fHasta" value="${F.hasta}"></span>
+    <span id="fMes" style="display:${F.periodo === 'mesesp' ? 'inline-flex' : 'none'};gap:6px"><input type="month" id="fMesSel" value="${F.mesSel}"></span>
+    <span id="fCustom" style="display:${F.periodo === 'custom' ? 'inline-flex' : 'none'};gap:6px;align-items:center"><input type="date" id="fDesde" value="${F.desde}" title="Desde"> a <input type="date" id="fHasta" value="${F.hasta}" title="Hasta"></span>
     <label>Campo <select id="fCampo"><option value="">Todos</option>${nombresCampos().concat(['Otros']).map(c => `<option ${F.campo === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>
-    <span class="per-et">${esc(etiquetaPeriodo())}</span>`;
-  $('#fPer').onchange = e => { F.periodo = e.target.value; renderApp(); };
-  $('#fDesde').onchange = e => { F.desde = e.target.value; renderApp(); };
-  $('#fHasta').onchange = e => { F.hasta = e.target.value; renderApp(); };
-  $('#fCampo').onchange = e => { F.campo = e.target.value; renderApp(); };
+    <label class="f-buscar">🔍 <input type="search" id="fQ" placeholder="Buscar nombre, placas, empresa, guardia…" value="${esc(F.q)}"></label>
+    ${activos ? '<button class="mini" id="fLimpiar" title="Volver a últimos 7 días, todos los campos, sin búsqueda">Limpiar filtros</button>' : ''}
+    <span class="per-et">${esc(etiquetaPeriodo())}${F.campo ? ' · ' + esc(F.campo) : ''}${F.q ? ' · “' + esc(F.q) + '”' : ''}</span>`;
+  const cambia = fn => e => { fn(e); MAX_FILAS = 150; renderApp(); };
+  $('#fPer').onchange = cambia(e => { F.periodo = e.target.value; });
+  $('#fMesSel').onchange = cambia(e => { F.mesSel = e.target.value; });
+  $('#fDesde').onchange = cambia(e => { F.desde = e.target.value; });
+  $('#fHasta').onchange = cambia(e => { F.hasta = e.target.value; });
+  $('#fCampo').onchange = cambia(e => { F.campo = e.target.value; });
+  let tq; $('#fQ').oninput = e => { clearTimeout(tq); const v = e.target.value; tq = setTimeout(() => { F.q = v; MAX_FILAS = 150; renderApp(); const i = $('#fQ'); if (i) { i.focus(); i.setSelectionRange(v.length, v.length); } }, 450); };
+  if ($('#fLimpiar')) $('#fLimpiar').onclick = cambia(() => { F.periodo = '7d'; F.campo = ''; F.q = ''; F.desde = ''; F.hasta = ''; });
 }
+document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-mas-filas]'); if (!b) return; const y = window.scrollY; MAX_FILAS = b.dataset.masFilas === 'todo' ? 1e9 : MAX_FILAS + 300; renderApp(); window.scrollTo(0, y); });
 function renderApp() {
   const v = VIEWS.find(x => x.id === VISTA_ACTUAL) || VIEWS[0];
   renderNav(); barraFiltros();

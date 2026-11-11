@@ -3,10 +3,10 @@
 
 const COL = { azul: '#a9ccff', naranja: '#f0a35e', verde: '#34a853', rojo: '#e5534b', amarillo: '#d9a520', gris: '#c3d3f5' };
 function tabla(cols, rows, opc) {
-  opc = opc || {}; const max = opc.max || 150;
+  opc = opc || {}; const max = opc.max || MAX_FILAS;
   if (!rows.length) return '<div class="vacio">Sin registros en este periodo</div>';
   const shown = rows.slice(0, max);
-  return `<div class="tabla-w${opc.wrap ? ' sinmax' : ''}"><table class="tabla${opc.wrap ? ' wrap' : ''}"><thead><tr>${cols.map(c => `<th>${esc(c.t)}</th>`).join('')}</tr></thead><tbody>${shown.map((r, i) => `<tr ${opc.click ? `data-i="${i}" class="click"` : ''}>${cols.map(c => { const lg = /^(Descripci|Notas|Observ|Motivo)/.test(c.t) && !c.h; const t = c.h ? c.f(r) : esc(c.f(r)); return lg ? `<td class="largo" title="Clic para ver completo">${t}</td>` : `<td>${t}</td>`; }).join('')}</tr>`).join('')}</tbody></table></div>${rows.length > max ? `<div class="nota">Mostrando ${max} de ${rows.length} registros. Use los filtros para acotar.</div>` : ''}`;
+  return `<div class="tabla-w${opc.wrap ? ' sinmax' : ''}"><table class="tabla${opc.wrap ? ' wrap' : ''}"><thead><tr>${cols.map(c => `<th>${esc(c.t)}</th>`).join('')}</tr></thead><tbody>${shown.map((r, i) => `<tr ${opc.click ? `data-i="${i}" class="click"` : ''}>${cols.map(c => { const lg = /^(Descripci|Notas|Observ|Motivo)/.test(c.t) && !c.h; const t = c.h ? c.f(r) : esc(c.f(r)); return lg ? `<td class="largo" title="Clic para ver completo">${t}</td>` : `<td>${t}</td>`; }).join('')}</tr>`).join('')}</tbody></table></div>${rows.length > max ? `<div class="nota">Mostrando ${max} de ${rows.length} registros. ${opc.max ? 'Use los filtros para acotar.' : `<button class="mini" data-mas-filas="300">Mostrar 300 más</button> <button class="mini" data-mas-filas="todo">Mostrar todos</button> · o acote con los filtros (mes, campo, búsqueda).`}</div>` : ''}`;
 }
 const pill = (txt, nivel) => `<span class="pill ${nivel}">${esc(txt)}</span>`;
 const card = (titulo, cuerpo, extra) => `<section class="card ${extra || ''}"><h3>${esc(titulo)}</h3>${cuerpo}</section>`;
