@@ -17,6 +17,22 @@ const rxProm = a => a.length ? sum(a) / a.length : 0;
 const rxMax = ss => Math.max(4, ...ss.flatMap(x => x.valores));
 const rxR1 = v => Math.round(v * 10) / 10;
 
+// ---------- ventanita al pasar el cursor por un punto del mapa (nombre + miniatura) ----------
+const rxTipReg = [];
+(function () {
+  let tip = null;
+  const crear = () => { tip = document.createElement('div'); tip.style.cssText = 'position:fixed;z-index:100000;pointer-events:none;background:#0c2070;color:#fff;border:1px solid #4f8fd6;border-radius:8px;padding:8px 10px;font-size:12.5px;max-width:230px;box-shadow:0 6px 18px rgba(0,0,0,.45);display:none'; document.body.appendChild(tip); };
+  const mover = e => { const w = tip.offsetWidth, h = tip.offsetHeight; let x = e.clientX + 14, y = e.clientY + 14; if (x + w > innerWidth - 6) x = e.clientX - w - 14; if (y + h > innerHeight - 6) y = e.clientY - h - 14; tip.style.left = Math.max(4, x) + 'px'; tip.style.top = Math.max(4, y) + 'px'; };
+  document.addEventListener('mouseover', e => {
+    const c = e.target.closest && e.target.closest('.rx-pt'); if (!c) return; const d = rxTipReg[+c.dataset.tip]; if (!d) return; if (!tip) crear();
+    tip.innerHTML = (d.foto ? `<img src="${d.foto}" style="display:block;width:100%;max-height:130px;object-fit:cover;border-radius:6px;margin-bottom:6px" alt="">` : '') + `<b>${esc(d.n)}</b><br><span style="opacity:.85">${esc(d.t)}</span>` + (d.ts ? `<br><span style="opacity:.7">${fmtFH(d.ts)}</span>` : '');
+    tip.style.display = 'block'; mover(e);
+  });
+  document.addEventListener('mousemove', e => { if (tip && tip.style.display === 'block') mover(e); });
+  document.addEventListener('mouseout', e => { const c = e.target.closest && e.target.closest('.rx-pt'); if (c && tip) tip.style.display = 'none'; });
+  document.addEventListener('click', e => { const c = e.target.closest && e.target.closest('.rx-pt'); if (c) { const d = rxTipReg[+c.dataset.tip]; if (d && d.foto) rxLightbox(d.foto); } });
+})();
+
 // ---------- mapa de rutas (plano de coordenadas, funciona sin internet) ----------
 function rxMapaSVG(rs, opc) {
   opc = opc || {};
@@ -40,12 +56,19 @@ function rxMapaSVG(rs, opc) {
     const paso = Math.ceil(p.length / 600), q = p.filter((_, i) => i % paso === 0 || i === p.length - 1);
     g += `<polyline points="${q.map(z => X(z).toFixed(1) + ',' + Y(z).toFixed(1)).join(' ')}" fill="none" stroke="${col(normCampo(r.area))}" stroke-width="2" stroke-opacity=".75" stroke-linejoin="round"><title>${esc(r.guardia)} · ${esc(r.area)} · ${fmtFH(r.inicio)}</title></polyline>`;
   });
-  const dot = (p, c, rad, t) => `<circle cx="${X(p).toFixed(1)}" cy="${Y(p).toFixed(1)}" r="${rad}" fill="${c}" stroke="#000" stroke-opacity=".5"><title>${esc(t)}</title></circle>`;
+  const dot = (p, c, rad, t, info) => {
+    const id = info ? rxTipReg.push(info) - 1 : -1;
+    return `<circle cx="${X(p).toFixed(1)}" cy="${Y(p).toFixed(1)}" r="${rad}" fill="${c}" stroke="#000" stroke-opacity=".5"${id >= 0 ? ` class="rx-pt" data-tip="${id}" style="cursor:pointer"` : ''}>${id >= 0 ? '' : `<title>${esc(t)}</title>`}</circle>`;
+  };
+  const nombrar = { checkpoint: 'Punto de control', parada: 'Parada libre', novedad: 'Novedad' };
   rs.forEach(r => {
+    const filas = rxFilas(r), usadas = new Set();
+    // une cada punto GPS marcado con el registro (nombre, foto, hora) que se guardó en esa misma posición
+    const buscar = p => { const i = filas.findIndex((f, j) => !usadas.has(j) && f.k === p.tipo && f.lat === p.lat && f.lng === p.lng); if (i >= 0) { usadas.add(i); return filas[i]; } return null; };
     (r.ruta || []).filter(p => p.lat != null && p.lng != null).forEach(p => {
-      if (p.tipo === 'checkpoint') g += dot(p, '#4cd07a', 4, 'Punto de control');
-      else if (p.tipo === 'parada') g += dot(p, '#f2c744', 4, 'Parada libre');
-      else if (p.tipo === 'novedad') g += dot(p, '#e0459b', 5, 'Novedad');
+      const col_ = p.tipo === 'checkpoint' ? '#4cd07a' : p.tipo === 'parada' ? '#f2c744' : p.tipo === 'novedad' ? '#e0459b' : null; if (!col_) return;
+      const f = buscar(p), base = nombrar[p.tipo];
+      g += dot(p, col_, p.tipo === 'novedad' ? 5 : 4, base, { n: f ? f.n : base, t: f ? f.t : base, ts: f ? f.ts : p.ts, foto: f ? f.foto : '', g: r.guardia, a: r.area });
     });
     if (opc.extremos) {
       const p = (r.ruta || []).filter(x => x.lat != null && x.lng != null);
@@ -60,9 +83,9 @@ function rxMapaSVG(rs, opc) {
 // ---------- fotos ----------
 function rxFilas(r) {
   const f = [];
-  (r.checkpoints || []).forEach(c => f.push({ n: c.nombre, t: c.marcado ? 'Punto de control · ' + (c.viaQR ? 'QR' : 'manual') : 'NO visitado', ts: c.ts, foto: c.foto, nota: c.nota, mal: !c.marcado }));
-  (r.paradasLibres || []).forEach(p => f.push({ n: p.descripcion || 'Parada libre', t: 'Parada libre', ts: p.ts, foto: p.foto, nota: p.nota }));
-  (r.novedades || []).forEach(n => f.push({ n: n.descripcion || 'Novedad', t: '🔍 ' + (n.tipoNovedad || 'Novedad') + (n.resuelta ? ' · resuelta' : ' · ⏳ pendiente'), ts: n.tsDetectada || n.ts, foto: n.foto, nota: n.nota, mal: !n.resuelta }));
+  (r.checkpoints || []).forEach(c => f.push({ k: 'checkpoint', lat: c.lat, lng: c.lng, n: c.nombre, t: c.marcado ? 'Punto de control · ' + (c.viaQR ? 'QR' : 'manual') : 'NO visitado', ts: c.ts, foto: c.foto, nota: c.nota, mal: !c.marcado }));
+  (r.paradasLibres || []).forEach(p => f.push({ k: 'parada', lat: p.lat, lng: p.lng, n: p.descripcion || 'Parada libre', t: 'Parada libre', ts: p.ts, foto: p.foto, nota: p.nota }));
+  (r.novedades || []).forEach(n => f.push({ k: 'novedad', lat: n.lat, lng: n.lng, n: n.descripcion || 'Novedad', t: '🔍 ' + (n.tipoNovedad || 'Novedad') + (n.resuelta ? ' · resuelta' : ' · ⏳ pendiente'), ts: n.tsDetectada || n.ts, foto: n.foto, nota: n.nota, mal: !n.resuelta }));
   return f;
 }
 const rxThumb = f => `<div class="thumb"><div class="thumb-img">${f.foto ? `<img src="${f.foto}" class="rx-foto" alt="">` : `<span>${f.ts ? '📍' : '⬜'}</span>`}</div><div class="thumb-l ${f.mal ? 'mal' : ''}"><b>${esc(f.n)}</b><br>${esc(f.t)}<br>${f.ts ? fmtFH(f.ts) : 'sin marcar'}</div></div>`;
