@@ -293,8 +293,15 @@ function construirPlantilla() {
 
 // ---------- importación de archivos JSON de las apps y paneles ----------
 async function importarArchivos(files) {
-  const cuenta = { rhMov: 0, desempeno: 0, rhPlantilla: 0, operativo: 0, opAct: 0, opViejo: 0, rondines: 0, accesos: 0, incidencias: 0, otros: 0, error: 0, duplicados: 0 };
+  const cuenta = { rhMov: 0, desempeno: 0, rhPlantilla: 0, operativo: 0, opAct: 0, opViejo: 0, rondines: 0, accesos: 0, incidencias: 0, otros: 0, error: 0, duplicados: 0, accesosAct: 0 };
   const lotes = { rondines: [], accesos: [], incidencias: [], operativo: [] };
+  const mapAcc = new Map(DATA.accesos.map(x => [x.id, x]));
+  // un acceso ya importado solo se completa (p. ej. cuando después se registra la hora de salida); nunca se sobrescribe con datos más viejos
+  const completarAcceso = (base, inc) => {
+    if (!base || base.editadoEn) return null; const vacio = v => v == null || v === ''; const m = { ...base }; let cambio = false;
+    Object.keys(inc).forEach(c => { if (c !== 'id' && vacio(base[c]) && !vacio(inc[c])) { m[c] = inc[c]; cambio = true; } });
+    return cambio ? m : null;
+  };
   const vistos = { operativo: new Set(), rondines: new Set(DATA.rondines.map(x => x.id)), accesos: new Set(DATA.accesos.map(x => x.id)), incidencias: new Set(DATA.incidencias.map(x => x.id)) };
   const opBorrar = new Set();
   // Resumen semanal exportado por la app del guardia: reemplaza la captura de ese campo y semana (aunque se haya capturado o editado en el ERP),
@@ -382,8 +389,12 @@ async function importarArchivos(files) {
           return;
         }
         if (t === 'operativo' && o.origen === 'legado' && (DATA.operativo.some(x => x.origen !== 'legado' && x.fecha === o.fecha && x.campo === o.campo) || DATA.operativo.some(x => x.id === o.id && x.editadoEn))) { cuenta.duplicados++; return; }
-        if (vistos[t].has(o.id)) { if (o.origen === 'legado') lotes[t].push(o); else cuenta.duplicados++; return; }
-        vistos[t].add(o.id); lotes[t].push(o); cuenta[t]++;
+        if (vistos[t].has(o.id)) {
+          if (o.origen === 'legado') { lotes[t].push(o); return; }
+          if (t === 'accesos') { const m = completarAcceso(mapAcc.get(o.id), o); if (m) { mapAcc.set(o.id, m); lotes.accesos.push(m); cuenta.accesosAct++; return; } }
+          cuenta.duplicados++; return;
+        }
+        vistos[t].add(o.id); if (t === 'accesos') mapAcc.set(o.id, o); lotes[t].push(o); cuenta[t]++;
       });
     } catch (e) { cuenta.error++; }
     if (logArch.nuevos + logArch.actualizados + logArch.omitidos) logOp.push(logArch);
@@ -402,7 +413,7 @@ async function importarArchivos(files) {
 function resumenImport(c) {
   const p = [];
   if (c.plantillaBase) p.push('plantilla base de ' + c.plantillaBase + ' empleado(s)');
-  if (c.rondines) p.push(c.rondines + ' rondín(es)'); if (c.accesos) p.push(c.accesos + ' acceso(s)');
+  if (c.rondines) p.push(c.rondines + ' rondín(es)'); if (c.accesos) p.push(c.accesos + ' acceso(s)'); if (c.accesosAct) p.push(c.accesosAct + ' acceso(s) actualizado(s) con datos que faltaban, como la hora de salida');
   if (c.incidencias) p.push(c.incidencias + ' incidencia(s)'); if (c.desempeno) p.push(c.desempeno + ' registro(s) de desempeño'); if (c.rhMov) p.push(c.rhMov + ' movimiento(s) de RH'); if (c.rhPlantilla) p.push(c.rhPlantilla + ' alta(s)/baja(s) de plantilla'); if (c.operativo > 0) p.push(c.operativo + ' captura(s) operativa(s)'); if (c.opAct > 0) p.push(c.opAct + ' semana(s) de control operativo actualizada(s)'); if (c.otros) p.push(c.otros + ' respaldo(s) completo(s)');
   let t = p.length ? 'Importado: ' + p.join(', ') + '.' : 'No se importó nada nuevo.';
   if (c.duplicados) t += ' ' + c.duplicados + ' ya existían.';
