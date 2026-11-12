@@ -512,7 +512,7 @@ registrarVista({
     const us = getUsuarios();
     let h = card('Usuarios y PIN', tabla([{ t: 'Usuario', f: u => u.nombre }, { t: 'Rol', f: u => ROLES[u.rol] }, { t: '', h: 1, f: u => `<button class="mini" data-pin="${u.id}">Cambiar PIN</button> ${u.id !== SESION.id ? `<button class="mini" data-udel="${u.id}">Eliminar</button>` : ''}` }], us) +
       '<div class="barra-acc"><button class="btn" id="nuevoU">+ Nuevo usuario</button></div><div class="nota">Los guardias no tienen acceso a este software: siguen usando sus apps de rondines y control de acceso.</div>');
-    h += '<div class="grid2">' + card('Campos y alias', `<p class="nota">Un campo por línea: <code>Nombre | alias1, alias2</code>. Los alias unifican cómo escriben el nombre los guardias.</p><textarea id="cfCampos" rows="8">${esc(getCampos().map(c => c.nombre + ' | ' + c.alias.join(', ')).join('\n'))}</textarea>`) +
+    h += '<div class="grid2">' + card('Campos y alias', `<p class="nota">Un campo por línea: <code>Nombre | alias1, alias2</code>. Los alias unifican cómo escriben el nombre los guardias (se ignoran mayúsculas y acentos; <code>galeras+palomas</code> exige ambas palabras; el orden importa: lo más específico primero).</p><textarea id="cfCampos" rows="8">${esc(getCampos().map(c => c.nombre + ' | ' + c.alias.join(', ')).join('\n'))}</textarea>`) +
       card('Departamentos', `<p class="nota">Uno por línea.</p><textarea id="cfDeptos" rows="8">${esc(getDeptos().join('\n'))}</textarea>`) +
       card('Catálogo de problemas y peso (1-5)', `<p class="nota">Formato: <code>Nombre | peso</code>.</p><textarea id="cfCat" rows="8">${esc(getCatalogo().map(c => c.nombre + ' | ' + c.peso).join('\n'))}</textarea>`) +
       card('Lista de acceso restringido', `<p class="nota">Nombres o placas, uno por línea. Se marcan en Control de acceso.</p><textarea id="cfRes" rows="8">${esc(cfgGet('restringidos', []).join('\n'))}</textarea>`) + '</div>';
@@ -526,7 +526,7 @@ registrarVista({
     $$('[data-clr]', el).forEach(b => b.onclick = async () => { if (confirm('¿Borrar TODOS los datos de ' + b.dataset.clr + '? No se puede deshacer.')) { await dbClear(b.dataset.clr); toast('Datos borrados'); renderApp(); } });
     $('#cfGuardar', el).onclick = async () => {
       const lineas = id => $('#' + id, el).value.split('\n').map(s => s.trim()).filter(Boolean);
-      const campos = lineas('cfCampos').map(l => { const [n, a] = l.split('|'); return { nombre: n.trim(), alias: (a || '').split(',').map(s => s.trim()).filter(Boolean) }; });
+      const campos = lineas('cfCampos').map(l => { const [n, a] = l.split('|'); return { nombre: n.trim(), p: (CAMPOS_LM.lista.find(x => x.nombre === n.trim()) || {}).p, alias: (a || '').split(',').map(s => s.trim()).filter(Boolean) }; });
       const cat = lineas('cfCat').map(l => { const [n, p] = l.split('|'); return { nombre: n.trim(), peso: Math.min(5, Math.max(1, parseInt(p) || 1)) }; });
       if (!campos.length) { toast('Debe haber al menos un campo', 'mal'); return; }
       await cfgSet('campos', campos); await cfgSet('deptos', lineas('cfDeptos')); await cfgSet('catalogo', cat); await cfgSet('restringidos', lineas('cfRes'));

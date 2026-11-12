@@ -4,12 +4,8 @@
 (function (g) {
   const n = t => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
   function campoLegado(txt) {
-    const s = ' ' + n(txt) + ' ';
-    if (s.includes('milagro')) return /\b(tres|3|iii)\b/.test(s) ? 'El Milagro Tres' : /\b(dos|2|ii)\b/.test(s) ? 'El Milagro Dos' : 'El Milagro Uno';
-    if (s.includes('santa fe')) return 'Santa Fe';
-    if (s.includes('empaque')) return 'Empaque';
-    if (s.includes('palomas') || s.includes('almacen general')) return 'Palomas';
-    return String(txt || '').trim() || 'Otros';
+    const o = g.CAMPOS_LM && g.CAMPOS_LM.oficial(txt);
+    return o || String(txt || '').trim() || 'Otros';
   }
   const DEPTOS = ['Almacén General', 'Empaque', 'Labores', 'Mantenimiento', 'Plagas', 'Previsión Social', 'RH', 'Producción', 'Riego', 'Nóminas', 'Inocuidad', 'Seguridad'];
   function deptoLegado(t) { const x = n(t); return DEPTOS.find(d => n(d) === x) || String(t || '').trim(); }

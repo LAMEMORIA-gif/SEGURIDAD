@@ -33,14 +33,8 @@ function descargar(nombre, contenido, mime) {
 }
 
 // ---------- configuración por defecto (editable en Configuración) ----------
-const CAMPOS_DEF = [
-  { nombre: 'Palomas', alias: ['palomas', 'almacen general'] },
-  { nombre: 'El Milagro Uno', alias: ['milagro uno', 'milagro 1', 'milagro i'] },
-  { nombre: 'El Milagro Dos', alias: ['milagro dos', 'milagro 2', 'milagro ii'] },
-  { nombre: 'El Milagro Tres', alias: ['milagro tres', 'milagro 3', 'milagro iii'] },
-  { nombre: 'Santa Fe', alias: ['santa fe'] },
-  { nombre: 'Empaque', alias: ['empaque'] }
-];
+const CAMPOS_DEF = CAMPOS_LM.lista.map(x => ({ nombre: x.nombre, p: x.p, alias: x.alias.slice() }));
+const CAMPOS_VERSION = 2; // sube cuando cambie el catálogo oficial de campos (se migra una sola vez)
 const DEPTOS_DEF = ['Almacén General', 'Empaque', 'Labores', 'Mantenimiento', 'Plagas', 'Previsión Social', 'RH', 'Producción', 'Riego', 'Nóminas', 'Inocuidad'];
 const CATALOGO_DEF = [
   { nombre: 'Suicidio', peso: 5 }, { nombre: 'Riñas', peso: 4 }, { nombre: 'IntroAlcohol', peso: 3 },
@@ -49,10 +43,10 @@ const CATALOGO_DEF = [
   { nombre: 'Otro', peso: 1 }
 ];
 const PLANTILLA_DEF = [
-  { punto: 'Campo Palomas', campo: 'Palomas', dia: 2, noche: 2 }, { punto: 'Galeras Palomas', campo: 'Palomas', dia: 2, noche: 2 },
-  { punto: 'El Milagro Tres', campo: 'El Milagro Tres', dia: 1, noche: 1 }, { punto: 'El Milagro Dos', campo: 'El Milagro Dos', dia: 1, noche: 1 },
-  { punto: 'El Milagro Uno', campo: 'El Milagro Uno', dia: 3, noche: 3 }, { punto: 'Santa Fe', campo: 'Santa Fe', dia: 3, noche: 2 },
-  { punto: 'Empaque', campo: 'Empaque', dia: 5, noche: 4 }, { punto: 'Galeras Empaque', campo: 'Empaque', dia: 1, noche: 1 }
+  { punto: 'Campo Palomas', campo: 'Campo Palomas', dia: 2, noche: 2 }, { punto: 'Galeras Palomas', campo: 'Galeras Palomas', dia: 2, noche: 2 },
+  { punto: 'El Milagro Tres', campo: 'Campo El Milagro Tres', dia: 1, noche: 1 }, { punto: 'El Milagro Dos', campo: 'Campo El Milagro Dos', dia: 1, noche: 1 },
+  { punto: 'El Milagro Uno', campo: 'Campo El Milagro Uno', dia: 3, noche: 3 }, { punto: 'Santa Fe', campo: 'Campo Santa Fe', dia: 3, noche: 2 },
+  { punto: 'Empaque', campo: 'Empaque', dia: 5, noche: 4 }, { punto: 'Galeras Empaque', campo: 'Galeras Empaque', dia: 1, noche: 1 }
 ];
 
 // ---------- base de datos (IndexedDB) ----------
@@ -108,13 +102,24 @@ const nombresCampos = () => getCampos().map(c => c.nombre);
 
 // unifica cualquier nombre de ubicación ("Campo Palomas RLM", "Milagro 1"...) al campo oficial
 function normCampo(txt) {
-  const n = ' ' + norm(txt) + ' ';
-  if (n.trim() === '') return 'Sin campo';
-  for (const c of getCampos()) {
-    if (n.includes(' ' + norm(c.nombre) + ' ')) return c.nombre;
-    for (const a of c.alias) if (n.includes(' ' + norm(a) + ' ')) return c.nombre;
+  if (norm(txt) === '') return 'Sin campo';
+  const lista = getCampos();
+  return CAMPOS_LM.oficial(txt, lista) || CAMPOS_LM.oficial(txt) || 'Otros';
+}
+// Migración única al catálogo oficial: renombra campos en los registros ya guardados y repone la lista de campos.
+async function migrarCampos() {
+  if ((cfgGet('campos_v', 0) | 0) >= CAMPOS_VERSION) return;
+  const viejos = cfgGet('campos', []);
+  const extra = viejos.filter(c => c && c.nombre && !CAMPOS_LM.oficial(c.nombre)); // campos personalizados que no son del catálogo
+  await cfgSet('campos', CAMPOS_DEF.concat(extra));
+  for (const t of ['incidencias', 'operativo', 'rh']) {
+    const cambios = [];
+    DATA[t].forEach(r => { if (!r.campo) return; const o = CAMPOS_LM.oficial(r.campo); if (o && o !== r.campo) { r.campo = o; cambios.push(r); } });
+    for (const r of cambios) await dbPut(t, r);
   }
-  return 'Otros';
+  const pl = cfgGet('plantilla', null);
+  if (pl) await cfgSet('plantilla', pl.map(x => Object.assign({}, x, { campo: CAMPOS_LM.oficial(x.punto) || CAMPOS_LM.oficial(x.campo) || x.campo })));
+  await cfgSet('campos_v', CAMPOS_VERSION);
 }
 
 // ---------- usuarios y sesión ----------
@@ -490,7 +495,7 @@ function dialogo(titulo, html, onOk, okTxt) {
 
 // ---------- arranque / pantalla de acceso ----------
 async function arrancar() {
-  await dbOpen(); await dbLoadAll();
+  await dbOpen(); await dbLoadAll(); try { await migrarCampos(); } catch (e) { console.error('migrarCampos', e); }
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => { });
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
   mostrarLogin();

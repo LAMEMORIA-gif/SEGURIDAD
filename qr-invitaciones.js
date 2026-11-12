@@ -63,8 +63,7 @@ function cardInvitacionesQR() {
         </div>
         <div>
           <label>Campo / caseta</label>
-          <input type="text" id="qrCampo" list="dlCamposQR" placeholder="Cualquier campo">
-          <datalist id="dlCamposQR"></datalist>
+          <select id="qrCampo"><option value="">Cualquier campo</option>${CAMPOS_LM.nombres.map(c=>`<option>${c}</option>`).join('')}</select>
         </div>
         <div>
           <label class="req">Motivo</label>
@@ -414,7 +413,7 @@ function bindInvitacionesQR(el) {
     document.getElementById('qrEconomico').value = bp.dataset.ne; qrBuscarUnidad();
     const u = qrLoadUnidades()[bp.dataset.ne] || {};
     if(u.area) document.getElementById('qrArea').value = u.area;
-    if(u.campo) document.getElementById('qrCampo').value = u.campo;
+    if(u.campo) document.getElementById('qrCampo').value = CAMPOS_LM.oficial(u.campo) || '';
     if(u.anfitrion) document.getElementById('qrAnfitrion').value = u.anfitrion;
     qrMsg('qrCrearMsg', 'Unidad '+bp.dataset.ne+' cargada del catálogo. Revise el chofer y la vigencia, y toque "Crear pase de unidad".', true);
     document.getElementById('qrTipo').scrollIntoView({behavior:'smooth', block:'center'});
@@ -587,7 +586,7 @@ function bindInvitacionesQR(el) {
     document.getElementById('qrTipo').value = 'F'; qrAplicarTipo();
     const set = (id,val)=>{ if(val) document.getElementById(id).value = val; };
     set('qrNombre', r.nombre); set('qrEmpresa', r.empresa); set('qrPlacas', r.placas); set('qrTipoID', r.tipoID);
-    set('qrTipoPersona', r.tipoPersona); set('qrArea', r.area); set('qrCampo', r.campo);
+    set('qrTipoPersona', r.tipoPersona); set('qrArea', r.area); set('qrCampo', CAMPOS_LM.oficial(r.campo) || r.campo);
     if(r.motivo && Array.from(document.getElementById('qrMotivo').options).some(o=>o.value===r.motivo)) document.getElementById('qrMotivo').value = r.motivo;
     qrAplicarMotivo(); set('qrEconomico', r.ne); if(r.ne) qrBuscarUnidad();
     document.querySelectorAll('#qrDias input').forEach(cb=>{ cb.checked = r.diasSemana.indexOf(cb.value)!==-1; });
@@ -638,7 +637,6 @@ function bindInvitacionesQR(el) {
   });
 
   function qrRefrescarCampos(){
-    document.getElementById('dlCamposQR').innerHTML = Array.from(new Set(DATA.accesos.map(a=>a.campo).filter(Boolean))).sort().map(c=>`<option value="${QA.esc(c)}">`).join('');
   }
   function qrRenderTodo(){ qrRefrescarCampos(); qrSembrarUnidadesDeRegistros(); qrRenderUnidades(); qrRenderRecurrentes(); qrRenderEmitidos(); }
   qrAplicarTipo(); qrAplicarMotivo(); qrRenderTodo(); qrEspejar();

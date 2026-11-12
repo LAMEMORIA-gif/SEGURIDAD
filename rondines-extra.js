@@ -1,7 +1,7 @@
 // Rondines: mapa de rutas (GPS), galería de fotos de puntos y gráficas adicionales
 const RX_PAL = ['#ffb45e', '#4cd07a', '#f2c744', '#ff7a70', '#a9ccff', '#d68cff', '#5fe0d6', '#ff8fb8', '#b6e35a', '#e0a070'];
 const rxKey = t => String(t || 'Sin área').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim().toUpperCase();
-const rxBonito = t => { const s = rxKey(t); return s.charAt(0) + s.slice(1).toLowerCase(); };
+const rxBonito = t => { const c = CAMPOS_LM.nombres.concat(['Otros', 'Sin campo']).find(x => rxKey(x) === rxKey(t)); if (c) return c; const s = rxKey(t); return s.charAt(0) + s.slice(1).toLowerCase(); };
 function rxKm(ruta) {
   const p = (ruta || []).filter(x => x.lat != null && x.lng != null); let d = 0;
   for (let i = 1; i < p.length; i++) {
@@ -30,7 +30,7 @@ function rxMapaSVG(rs, opc) {
   const esc_ = Math.min((W - pad * 2) / sx, (H - pad * 2) / sy);
   const offX = (W - sx * esc_) / 2, offY = (H - sy * esc_) / 2;
   const X = p => offX + (p.lng - minLng) * k * esc_, Y = p => H - offY - (p.lat - minLat) * esc_;
-  const areas = []; rs.forEach(r => { const a = rxKey(r.area); if (!areas.includes(a)) areas.push(a); });
+  const areas = []; rs.forEach(r => { const a = normCampo(r.area); if (!areas.includes(a)) areas.push(a); });
   const col = a => RX_PAL[areas.indexOf(a) % RX_PAL.length];
   let g = `<rect x="0" y="0" width="${W}" height="${H}" rx="8" fill="#0c2070"/>`;
   for (let i = 1; i < 6; i++) g += `<line x1="${i * W / 6}" x2="${i * W / 6}" y1="0" y2="${H}" class="gl" opacity=".35"/>`;
@@ -38,7 +38,7 @@ function rxMapaSVG(rs, opc) {
   rs.forEach(r => {
     const p = (r.ruta || []).filter(x => x.lat != null && x.lng != null); if (p.length < 2) return;
     const paso = Math.ceil(p.length / 600), q = p.filter((_, i) => i % paso === 0 || i === p.length - 1);
-    g += `<polyline points="${q.map(z => X(z).toFixed(1) + ',' + Y(z).toFixed(1)).join(' ')}" fill="none" stroke="${col(rxKey(r.area))}" stroke-width="2" stroke-opacity=".75" stroke-linejoin="round"><title>${esc(r.guardia)} · ${esc(r.area)} · ${fmtFH(r.inicio)}</title></polyline>`;
+    g += `<polyline points="${q.map(z => X(z).toFixed(1) + ',' + Y(z).toFixed(1)).join(' ')}" fill="none" stroke="${col(normCampo(r.area))}" stroke-width="2" stroke-opacity=".75" stroke-linejoin="round"><title>${esc(r.guardia)} · ${esc(r.area)} · ${fmtFH(r.inicio)}</title></polyline>`;
   });
   const dot = (p, c, rad, t) => `<circle cx="${X(p).toFixed(1)}" cy="${Y(p).toFixed(1)}" r="${rad}" fill="${c}" stroke="#000" stroke-opacity=".5"><title>${esc(t)}</title></circle>`;
   rs.forEach(r => {
@@ -91,12 +91,12 @@ function rxGraficas(rs) {
   Object.keys(porG).forEach(g => { km[g] = rxR1(sum(porG[g], r => rxKm(r.ruta))); const d = porG[g].map(rxDur).filter(x => x != null); mn[g] = d.length ? Math.round(rxProm(d)) : 0; nvG[g] = sum(porG[g], r => (r.novedades || []).length); });
   // por mes: cumplimiento y cobertura (puntos distintos marcados / puntos distintos conocidos del campo)
   const meses = {}, conocidos = {};
-  DATA.rondines.forEach(r => (r.checkpoints || []).forEach(c => { (conocidos[rxKey(r.area)] = conocidos[rxKey(r.area)] || new Set()).add(rxKey(c.nombre)); }));
+  DATA.rondines.forEach(r => (r.checkpoints || []).forEach(c => { (conocidos[normCampo(r.area)] = conocidos[normCampo(r.area)] || new Set()).add(rxKey(c.nombre)); }));
   rs.forEach(r => { const m = isoDia(r.inicio).slice(0, 7); (meses[m] = meses[m] || []).push(r); });
   const mk = Object.keys(meses).sort();
   const cumM = mk.map(m => Math.round(rxProm(meses[m].map(cumplimientoRondin))));
   const cobM = mk.map(m => {
-    const hechos = {}; meses[m].forEach(r => (r.checkpoints || []).filter(c => c.marcado).forEach(c => { (hechos[rxKey(r.area)] = hechos[rxKey(r.area)] || new Set()).add(rxKey(c.nombre)); }));
+    const hechos = {}; meses[m].forEach(r => (r.checkpoints || []).filter(c => c.marcado).forEach(c => { (hechos[normCampo(r.area)] = hechos[normCampo(r.area)] || new Set()).add(rxKey(c.nombre)); }));
     const tot = sum(Object.keys(hechos), a => conocidos[a] ? conocidos[a].size : 0), ok = sum(Object.keys(hechos), a => hechos[a].size);
     return tot ? Math.round(ok / tot * 100) : 0;
   });
@@ -105,7 +105,7 @@ function rxGraficas(rs) {
   const sk = Object.keys(sem).sort(), et = sk.map(w => w.slice(8) + '/' + w.slice(5, 7));
   const campos = [...new Set(rs.map(r => normCampo(r.area)))].slice(0, 8);
   const serCampo = campos.map((c, i) => ({ nombre: c, color: RX_PAL[i % RX_PAL.length], valores: sk.map(w => sem[w].filter(r => normCampo(r.area) === c).length) }));
-  const serAN = [{ nombre: 'Áreas recorridas', color: COL.azul, valores: sk.map(w => new Set(sem[w].map(r => rxKey(r.area))).size) }, { nombre: 'Novedades', color: COL.rojo, valores: sk.map(w => sum(sem[w], r => (r.novedades || []).length)) }];
+  const serAN = [{ nombre: 'Áreas recorridas', color: COL.azul, valores: sk.map(w => new Set(sem[w].map(r => normCampo(r.area))).size) }, { nombre: 'Novedades', color: COL.rojo, valores: sk.map(w => sum(sem[w], r => (r.novedades || []).length)) }];
   // cobertura por turno
   const porT = {}; rs.forEach(r => { (porT[r.turno || 'Sin turno'] = porT[r.turno || 'Sin turno'] || []).push(cumplimientoRondin(r)); });
   const cobT = {}; Object.keys(porT).forEach(t => cobT[t] = Math.round(rxProm(porT[t])));
@@ -125,7 +125,7 @@ function rxGraficas(rs) {
 }
 
 function rxCardMapa(rs) {
-  const g = {}; rs.forEach(r => { if ((r.ruta || []).some(p => p.lat != null)) (g[rxKey(r.area)] = g[rxKey(r.area)] || []).push(r); });
+  const g = {}; rs.forEach(r => { if ((r.ruta || []).some(p => p.lat != null)) (g[normCampo(r.area)] = g[normCampo(r.area)] || []).push(r); });
   const ks = Object.keys(g); if (!ks.length) return card('Mapa de rutas recorridas (GPS)', '<div class="vacio">Sin datos GPS en este periodo</div>');
   return '<h3 class="sec">Mapa de rutas recorridas (GPS)</h3><div class="grid2">' + ks.map(k => card(rxBonito(k) + ' · ' + g[k].length + ' rondín(es)', rxMapaSVG(g[k], { W: 560, H: 380 }))).join('') + '</div>';
 }
