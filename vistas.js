@@ -120,12 +120,13 @@ registrarVista({
       kpi(restr.length, 'Lista restringida', restr.length ? 'mal' : 'ok') + kpi(dur.length ? Math.round(sum(dur) / dur.length) + ' min' : '—', 'Permanencia promedio') +
       kpi(pct(ac.filter(a => a.fotoID).length, ac.length) + ' %', 'Con foto de identificación', ac.length && pct(ac.filter(a => a.fotoID).length, ac.length) < 90 ? 'warn' : '', ac.filter(a => a.fotoID).length + ' de ' + ac.length) +
       kpi(ac.filter(a => a.qrVerificado).length, 'Ingresos con QR', '', pct(ac.filter(a => a.qrVerificado).length, ac.length) + ' % del periodo') + '</div>';
+    h += cardInvitacionesQR();
     h += cardInocuidad();
     if (dentro.length) h += card('Actualmente dentro (sin salida)', tabla([{ t: 'Ingreso', f: a => fmtFH(a.horaIngreso) }, { t: 'Nombre', f: a => a.nombre }, { t: 'ID', h: 1, f: fotoID }, { t: 'Campo', f: a => normCampo(a.campo) }, { t: 'Motivo', f: a => a.motivoVisita || '—' }, { t: 'Visita a', f: a => a.areaVisita || '—' }, { t: 'Lleva', h: 1, f: a => pill(tiempoDentroH(a).toFixed(1) + ' h', accesoExcedido(a) ? 'mal' : 'ok') }], dentro.sort((a, b) => a.horaIngreso - b.horaIngreso)));
     h += '<div class="grid2">' + card('Accesos por campo', barras(groupCount(ac, a => normCampo(a.campo)), { color: COL.azul })) + card('Motivos de visita', barras(groupCount(ac, a => a.motivoVisita), { color: COL.naranja })) +
       card('Tipo de visitante', barras(groupCount(ac, a => a.tipoPersona), { color: COL.verde })) + card('Área / persona visitada', barras(groupCount(ac, a => a.areaVisita), { color: COL.gris })) + '</div>';
     h += card('Bitácora de accesos', tabla([{ t: 'Ingreso', f: a => fmtFH(a.horaIngreso) }, { t: 'Salida', f: a => a.horaSalida ? fmtFH(a.horaSalida) : '—' }, { t: 'Nombre', f: a => a.nombre }, { t: 'ID', h: 1, f: fotoID }, { t: 'Tipo', f: a => a.tipoPersona || '—' }, { t: 'Empresa', f: a => a.empresaProcedencia || '—' }, { t: 'Placas', f: a => a.placas || '—' }, { t: 'Campo', f: a => normCampo(a.campo) }, { t: 'Motivo', f: a => a.motivoVisita || '—' }, { t: 'Confirmó', f: a => a.guardiaConfirma || '—' }], ac));
-    el.innerHTML = h; bindInocuidad(el);
+    el.innerHTML = h; bindInocuidad(el); bindInvitacionesQR(el);
   }
 });
 
