@@ -115,3 +115,5 @@ img.ine{height:30px;width:auto;max-width:56px;object-fit:cover;border-radius:4px
 .sname{font-weight:700;font-size:12.5px;margin:0 56px 5px 0;line-height:1.2}.srow{display:flex;justify-content:space-between;gap:6px;font-size:11px;padding:1.5px 0;line-height:1.25;border-bottom:1px dashed var(--borde)}.srow span{color:var(--tx2)}
 .strend{margin-top:5px;font-size:10.5px}.strend.up{color:#e5534b}.strend.down{color:#34a853}.strend.flat{color:var(--tx2)}
 .kpis-gestion{grid-template-columns:repeat(4,1fr)}@media(max-width:700px){.kpis-gestion{grid-template-columns:1fr 1fr}}
+
+.fila2{display:grid;grid-template-columns:1fr 1fr;gap:10px}.fila2 label{min-width:0}

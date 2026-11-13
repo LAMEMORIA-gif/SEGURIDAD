@@ -231,19 +231,21 @@ registrarVista({
     });
     const abrirInc = reg => {
       const ed = !!reg, dlg = dialogo(ed ? 'Editar incidencia' : 'Registrar incidencia', `
-      <label>Fecha<input type="date" id="iF" value="${isoDia(Date.now())}"></label>
+      <div class="fila2"><label>Fecha de detección<input type="date" id="iF" value="${isoDia(Date.now())}"></label><label>Fecha de aviso<input type="date" id="iFA"></label></div>
+      <div class="fila2"><label>Hora del reporte<input type="time" id="iHR"></label><label>Hora de llegada de seguridad<input type="time" id="iHL"></label></div>
+      <div class="fila2"><label>Fecha de solución<input type="date" id="iFS"></label><label>Estatus<select id="iEs"><option value="">Según la atención capturada</option><option>Concluido</option><option>En proceso</option><option>Abierto</option></select></label></div>
       <label>Campo<select id="iC">${nombresCampos().map(c => `<option>${esc(c)}</option>`).join('')}</select></label>
       <label>Departamento<select id="iD">${getDeptos().map(c => `<option>${esc(c)}</option>`).join('')}</select></label>
       <label id="iSubL" style="display:none">Subcategoría de Previsión Social<select id="iSub"><option value="">Sin subcategoría</option>${SUBCAT_PS.map(s => `<option>${s}</option>`).join('')}</select></label>
       <label>Catálogo de problema<select id="iP">${getCatalogo().map(c => `<option value="${esc(c.nombre)}">${esc(c.nombre)} (peso ${c.peso})</option>`).join('')}</select></label>
-      <label>Descripción<textarea id="iDesc" rows="3"></textarea></label><label>Acción tomada<textarea id="iAcc" rows="2"></textarea></label>
+      <label>Descripción del hecho<textarea id="iDesc" rows="3"></textarea></label><label>Atención y/o solución<textarea id="iAcc" rows="2"></textarea></label>
       <label>Ficha(s) del involucrado<input id="iFicha" placeholder="Ej. 1297-1"></label>
       <div><b style="font-size:13px">Fotos de la ficha de trabajo y evidencia</b><div class="inc-fotos-ed" id="iFotos"></div>
       <div class="inc-fotos-btns"><label class="btn sec mini">📷 Ficha (cámara)<input type="file" accept="image/*" capture="environment" data-tf="ficha"></label><label class="btn sec mini">🖼️ Ficha (galería/archivo)<input type="file" accept="image/*" multiple data-tf="ficha"></label><label class="btn sec mini">📷 Evidencia (cámara)<input type="file" accept="image/*" capture="environment" data-tf="evidencia"></label><label class="btn sec mini">🖼️ Evidencia (galería/archivo)<input type="file" accept="image/*" multiple data-tf="evidencia"></label></div></div>
       <label>Apoyo de la autoridad<select id="iAp"><option value="">Detectar automáticamente</option><option value="N">Sin apoyo de la autoridad</option><option value="M">Policía municipal</option><option value="G">Guardia civil estatal</option><option value="MG">Policía municipal y guardia civil</option></select></label>`,
       async d => {
         const p = $('#iP', d).value, dep = $('#iD', d).value;
-        const datos = { punto: esPS({ depto: dep }) ? $('#iSub', d).value : '', fecha: fromISO($('#iF', d).value) + 12 * 36e5, campo: $('#iC', d).value, depto: dep, problema: p, peso: (getCatalogo().find(c => c.nombre === p) || {}).peso || (ed ? reg.peso : 1) || 1, descripcion: $('#iDesc', d).value.trim(), accion: $('#iAcc', d).value.trim(), apoyoManual: $('#iAp', d).value, ficha: $('#iFicha', d).value.trim(), fotos: FOTOS_ED.length ? FOTOS_ED.slice() : undefined };
+        const datos = { punto: esPS({ depto: dep }) ? $('#iSub', d).value : '', fecha: fromISO($('#iF', d).value) + 12 * 36e5, campo: $('#iC', d).value, depto: dep, problema: p, peso: (getCatalogo().find(c => c.nombre === p) || {}).peso || (ed ? reg.peso : 1) || 1, descripcion: $('#iDesc', d).value.trim(), accion: $('#iAcc', d).value.trim(), apoyoManual: $('#iAp', d).value, fAviso: $('#iFA', d).value, fSol: $('#iFS', d).value, horaRep: $('#iHR', d).value, horaLleg: $('#iHL', d).value, estatus: $('#iEs', d).value, ficha: $('#iFicha', d).value.trim(), fotos: FOTOS_ED.length ? FOTOS_ED.slice() : undefined };
         await dbPut('incidencias', ed ? { ...reg, ...datos, editadoPor: SESION.nombre, editadoEn: Date.now() } : { ...datos, por: SESION.nombre });
         toast(ed ? 'Incidencia actualizada' : 'Incidencia registrada'); renderApp();
       }, ed ? 'Guardar cambios' : undefined);
@@ -255,7 +257,10 @@ registrarVista({
       pintaF();
       const mostrar = () => { $('#iSubL', dlg).style.display = esPS({ depto: $('#iD', dlg).value }) ? '' : 'none'; };
       $('#iD', dlg).onchange = mostrar;
-      if (ed) { $('#iF', dlg).value = isoDia(reg.fecha); setSel($('#iC', dlg), reg.campo); setSel($('#iD', dlg), reg.depto); setSel($('#iP', dlg), reg.problema); $('#iSub', dlg).value = reg.punto && SUBCAT_PS.includes(reg.punto) ? reg.punto : (SUBCAT_PS.find(s => norm(s) === norm(reg.punto)) || ''); $('#iDesc', dlg).value = reg.descripcion || ''; $('#iAcc', dlg).value = reg.accion || ''; $('#iAp', dlg).value = reg.apoyoManual || ''; }
+      if (ed) { $('#iF', dlg).value = isoDia(reg.fecha); setSel($('#iC', dlg), reg.campo); setSel($('#iD', dlg), reg.depto); setSel($('#iP', dlg), reg.problema); $('#iSub', dlg).value = reg.punto && SUBCAT_PS.includes(reg.punto) ? reg.punto : (SUBCAT_PS.find(s => norm(s) === norm(reg.punto)) || ''); $('#iDesc', dlg).value = reg.descripcion || ''; $('#iAcc', dlg).value = reg.accion || ''; $('#iAp', dlg).value = reg.apoyoManual || '';
+        $('#iFA', dlg).value = reg.fAviso || ''; $('#iFS', dlg).value = reg.fSol || ''; $('#iHR', dlg).value = String(reg.horaRep || '').slice(0, 5); $('#iHL', dlg).value = String(reg.horaLleg || '').slice(0, 5);
+        if (reg.estatus && ![...$('#iEs', dlg).options].some(o => o.value === reg.estatus)) $('#iEs', dlg).insertAdjacentHTML('beforeend', '<option>' + esc(reg.estatus) + '</option>'); $('#iEs', dlg).value = reg.estatus || ''; }
+      else { $('#iFA', dlg).value = isoDia(Date.now()); }
       mostrar();
     };
     const nb = $('#nuevaInc', el); if (nb) nb.onclick = () => abrirInc();
