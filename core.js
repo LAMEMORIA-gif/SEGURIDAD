@@ -133,6 +133,15 @@ async function migrarFechasOperativoLegado() {
   await cfgSet('op_fecha_v', 2);
 }
 
+// Migración única: horas de llegada de incidencias capturadas con AM/PM equivocado (ej. reporte 18:35, llegada 06:45 → 18:45).
+// Se guarda la hora original y la lista de cambios (se ve en la vista de Incidencias).
+async function migrarHorasLlegadaInc() {
+  if ((cfgGet('inc_horas_v', 0) | 0) >= 1) return;
+  const log = [];
+  for (const r of DATA.incidencias) { const n = LEGADO.corregirLlegada(r.horaRep, r.horaLleg); if (n !== r.horaLleg) { log.push({ id: r.id, num: r.num, rep: r.horaRep, de: r.horaLleg, a: n }); r.horaLlegOriginal = r.horaLleg; r.horaLleg = n; r.horaCorregida = true; await dbPut('incidencias', r); } }
+  await cfgSet('inc_horas_log', log); await cfgSet('inc_horas_v', 1);
+}
+
 // ---------- usuarios y sesión ----------
 const ROLES = { gerente: 'Gerente (solo lectura)', supervisor: 'Supervisor (captura e importa)', admin: 'Administrador (todo)' };
 let SESION = null;
@@ -513,7 +522,7 @@ function dialogo(titulo, html, onOk, okTxt) {
 
 // ---------- arranque / pantalla de acceso ----------
 async function arrancar() {
-  await dbOpen(); await dbLoadAll(); try { await migrarCampos(); } catch (e) { console.error('migrarCampos', e); } try { await migrarFechasOperativoLegado(); } catch (e) { console.error('migrarFechasOperativoLegado', e); }
+  await dbOpen(); await dbLoadAll(); try { await migrarCampos(); } catch (e) { console.error('migrarCampos', e); } try { await migrarFechasOperativoLegado(); } catch (e) { console.error('migrarFechasOperativoLegado', e); } try { await migrarHorasLlegadaInc(); } catch (e) { console.error('migrarHorasLlegadaInc', e); }
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => { });
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
   mostrarLogin();

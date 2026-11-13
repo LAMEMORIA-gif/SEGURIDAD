@@ -215,6 +215,8 @@ registrarVista({
     if (puedeEditar()) h += `<div class="barra-acc"><button class="btn" id="nuevaInc">+ Registrar incidencia</button></div>`; else h += soloLectura();
     h += '<div class="grid4">' + card('Por campo', barras(groupCount(inc, i => i.campo), { color: COL.naranja })) + card('Por catálogo de problema', barras(groupCount(inc, i => i.problema), { color: COL.rojo })) +
       card('Por departamento', barras(groupCount(inc, i => i.depto), { color: COL.azul })) + card('Severidad por campo (puntos)', barras(inc.reduce((m, i) => { m[i.campo] = (m[i.campo] || 0) + pesoDe(i); return m; }, {}), { color: COL.rojo })) + '</div>';
+    const lh = cfgGet('inc_horas_log', []) || [];
+    if (lh.length) h += `<details class="card"><summary><b>${lh.length} hora(s) de llegada corregidas</b> (AM/PM equivocado; se conservó la hora original en cada registro)</summary><div class="tabla-w" style="max-height:200px">${tabla([{ t: 'Incidencia', f: x => '#' + (x.num != null ? x.num : x.id) }, { t: 'Reporte', f: x => x.rep }, { t: 'Llegada capturada', f: x => x.de }, { t: 'Llegada corregida', f: x => x.a }], lh)}</div></details>`;
     h += indicadoresGestionInc(inc);
     const ps = inc.filter(esPS);
     h += '<div class="grid2">' + (ps.length ? card('Previsión Social por subcategoría', barras(groupCount(ps, subcatPS), { color: COL.verde }) + '<div class="nota">Total Previsión Social: ' + ps.length + ' incidencia(s).</div>') : '') + cardApoyoResumen(inc, true) + '</div>';

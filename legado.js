@@ -10,6 +10,15 @@
   const DEPTOS = ['Almacén General', 'Empaque', 'Labores', 'Mantenimiento', 'Plagas', 'Previsión Social', 'RH', 'Producción', 'Riego', 'Nóminas', 'Inocuidad', 'Seguridad'];
   function deptoLegado(t) { const x = n(t); return DEPTOS.find(d => n(d) === x) || String(t || '').trim(); }
   function diaTs(s) { const [y, m, d] = String(s).slice(0, 10).split('-').map(Number); return new Date(y, m - 1, d, 12).getTime(); }
+  // Hora de llegada capturada con AM/PM equivocado: si la respuesta sale de 12 h o más y al sumarle 12 h queda en 3 h o menos, se corrige
+  // (reporte 18:35 / llegada 06:45 → llegada 18:45).
+  function corregirLlegada(rep, lleg) {
+    const a = String(rep || '').split(':').map(Number), b = String(lleg || '').split(':').map(Number);
+    if (a.length < 2 || b.length < 2 || a.concat(b).some(isNaN)) return lleg;
+    let d = b[0] * 60 + b[1] - (a[0] * 60 + a[1]); if (d < 0) d += 1440;
+    if (d < 720 || d - 720 > 180) return lleg;
+    const m = (b[0] * 60 + b[1] + 720) % 1440; return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+  }
   function esIncLegado(o) { return !!(o && typeof o === 'object' && o.num != null && o.cat && o.fecha && o.campo); }
   function convInc(o, edit) {
     const x = Object.assign({}, o, edit || {});
@@ -17,7 +26,7 @@
     return {
       id: 'inc_' + (x._ownId || x.num), num: x.num, fecha: diaTs(x.fecha), campo: campoLegado(x.campo), depto: deptoLegado(x.depto), problema: cat,
       peso: x.peso != null ? x.peso : 1, descripcion: x.desc || '', accion: x.sol || '', estatus: x.estatus || '', m: x.m != null ? x.m : undefined, a: x.a != null ? x.a : undefined, punto: x.subcat || x.campoOriginal || '',
-      fAviso: x.f_aviso || '', fSol: x.f_sol || '', horaRep: x.horaRep || x.hora_reporte || '', horaLleg: x.horaLleg || x.hora_llegada || '', ficha: x.ficha || '', fotos: x.fotos && x.fotos.length ? x.fotos : undefined, apoyoManual: x.apoyoManual || undefined, por: x.guardia || undefined, origen: 'legado'
+      fAviso: x.f_aviso || '', fSol: x.f_sol || '', horaRep: x.horaRep || x.hora_reporte || '', horaLleg: corregirLlegada(x.horaRep || x.hora_reporte || '', x.horaLleg || x.hora_llegada || ''), ficha: x.ficha || '', fotos: x.fotos && x.fotos.length ? x.fotos : undefined, apoyoManual: x.apoyoManual || undefined, por: x.guardia || undefined, origen: 'legado'
     };
   }
   function lunesISO(anio, sem) { // lunes de la semana ISO, a las 12:00 hora local
@@ -87,5 +96,5 @@
     if (e.tipo !== 'alta' && e.tipo !== 'baja') return null;
     return { id: 'rh_pl_' + e.ts, tipo: e.tipo === 'alta' ? 'Alta' : 'Baja', persona: String(e.empleado || '').trim(), campo: '', depto: e.departamento || 'SEGURIDAD', funcion: e.funcion || undefined, genero: e.genero || undefined, fecha: e.fecha ? diaTs(e.fecha) : e.ts, notas: [e.motivo, e.obs].filter(Boolean).join(' · '), origen: 'legado' };
   }
-  g.LEGADO = { esFaltaRH, esVacRH, claveRH, convFaltaRH, convVacRH, convEventoRH, convEval, convLlamada, convEventoPlantilla, campoLegado, deptoLegado, esIncLegado, convInc, esOpLegado, convOp, convArchivoIncidencias, lunesISO, lunesLegado, fechaSemOp, esOpGuardia };
+  g.LEGADO = { esFaltaRH, esVacRH, claveRH, convFaltaRH, convVacRH, convEventoRH, convEval, convLlamada, convEventoPlantilla, campoLegado, deptoLegado, esIncLegado, convInc, esOpLegado, convOp, convArchivoIncidencias, lunesISO, lunesLegado, fechaSemOp, esOpGuardia, corregirLlegada };
 })(typeof window !== 'undefined' ? window : globalThis);
