@@ -135,7 +135,8 @@ registrarVista({
 const INC_LLEGADA_VERDE = 15, INC_LLEGADA_AMAR = 30; // minutos
 const incConcluida = i => i.estatus ? i.estatus === 'Concluido' : !!String(i.accion || '').trim();
 const incDias = i => { if (!i.fSol || !i.fecha) return null; const s = new Date(i.fSol + 'T00:00:00').getTime(); return isNaN(s) ? null : Math.max(0, Math.round((s - diaIni(i.fecha)) / 864e5)); };
-const incMin = i => { if (!i.horaRep || !i.horaLleg) return null; const a = String(i.horaRep).split(':').map(Number), b = String(i.horaLleg).split(':').map(Number); if (a.length < 2 || b.length < 2 || a.concat(b).some(isNaN)) return null; let d = b[0] * 60 + b[1] - (a[0] * 60 + a[1]); if (d < 0) d += 1440; return d; };
+const incMinRaw = i => { if (!i.horaRep || !i.horaLleg) return null; const a = String(i.horaRep).split(':').map(Number), b = String(i.horaLleg).split(':').map(Number); if (a.length < 2 || b.length < 2 || a.concat(b).some(isNaN)) return null; let d = b[0] * 60 + b[1] - (a[0] * 60 + a[1]); if (d < 0) d += 1440; return d; };
+const incMinOk = i => { const m = incMinRaw(i); return m != null && m < 720 ? m : null; }; // ≥12 h casi siempre es un error de captura (AM/PM): no entra al promedio
 const incProm = arr => arr.length ? sum(arr, x => x) / arr.length : null;
 const fmtMinInc = m => m == null ? '—' : (m = Math.round(m), m < 60 ? m + ' min' : Math.floor(m / 60) + ' h ' + String(m % 60).padStart(2, '0') + ' min');
 const fmtP1 = v => (Math.round(v * 10) / 10).toFixed(1) + '%';
@@ -146,9 +147,9 @@ const semIAS = v => v >= 85 ? 'ok' : v >= 60 ? 'warn' : 'mal';
 const SEM_COL = { ok: '#34a853', warn: '#f2c744', mal: '#e5534b' }, SEM_TXT = { ok: 'VERDE', warn: 'AMARILLO', mal: 'ROJO' };
 function metricasInc(l) {
   const total = l.length, puntos = sum(l, pesoDe), conc = l.filter(incConcluida).length, cierre = total ? conc / total * 100 : 0;
-  const dias = incProm(l.map(incDias).filter(x => x != null)), min = incProm(l.map(incMin).filter(x => x != null)), nmin = l.map(incMin).filter(x => x != null).length;
+  const dias = incProm(l.map(incDias).filter(x => x != null)), min = incProm(l.map(incMinOk).filter(x => x != null)), nmin = l.map(incMinOk).filter(x => x != null).length, dud = l.filter(i => incMinRaw(i) != null && incMinOk(i) == null).length;
   const ts = dias == null ? null : Math.max(0, Math.min(100, 100 * (1 - Math.max(0, dias - 1) / 4))); // 1 día = 100, 3 días = 50, 5+ = 0
-  return { total, puntos, idx: total ? puntos / (total * 5) * 100 : 0, conc, cierre, dias, min, nmin, pend: total - conc, ias: ts == null ? cierre : (cierre + ts) / 2 };
+  return { total, puntos, idx: total ? puntos / (total * 5) * 100 : 0, conc, cierre, dias, min, nmin, dud, pend: total - conc, ias: ts == null ? cierre : (cierre + ts) / 2 };
 }
 const dotK = n => `<span class="dotk" style="background:${SEM_COL[n]}"></span>`;
 function kpisGestionInc(inc) {
@@ -159,7 +160,7 @@ function kpisGestionInc(inc) {
     kpi(fmtP1(m.cierre), '% de cierre', '', m.conc + ' de ' + m.total + ' cerradas') +
     kpi(m.dias == null ? '—' : (Math.round(m.dias * 10) / 10).toFixed(1) + ' d', 'Días de resolución', '', 'promedio, días de aviso a solución') +
     kpi(dotK(semIAS(m.ias)) + fmtP1(m.ias), 'Índice de atención y/o solución', semIAS(m.ias), SEM_TXT[semIAS(m.ias)] + ' · combina % de cierre y días de resolución') +
-    kpi(m.min == null ? '—' : dotK(semLlegada(m.min)) + fmtMinInc(m.min), 'Tiempo de respuesta (llegada)', m.min == null ? '' : semLlegada(m.min), m.nmin + ' incidencia(s) con hora capturada · verde ≤' + INC_LLEGADA_VERDE + ' min, amarillo ≤' + INC_LLEGADA_AMAR + ' min') +
+    kpi(m.min == null ? '—' : dotK(semLlegada(m.min)) + fmtMinInc(m.min), 'Tiempo de respuesta (llegada)', m.min == null ? '' : semLlegada(m.min), m.nmin + ' incidencia(s) con hora capturada' + (m.dud ? ' (' + m.dud + ' excluida(s) por diferencia ≥12 h: revisar)' : '') + ' · verde ≤' + INC_LLEGADA_VERDE + ' min, amarillo ≤' + INC_LLEGADA_AMAR + ' min') +
     kpi(m.pend, 'Pendientes / en proceso', m.pend ? 'warn' : 'ok', m.total ? fmtP1(m.pend / m.total * 100) + ' del total' : '—') + '</div>';
 }
 function tarjetasSemaforoInc(inc, clave, vacioTxt) {
@@ -191,8 +192,8 @@ function indicadoresGestionInc(inc) {
   const por = (clave, f) => { const g = {}; inc.forEach(i => { const k = clave(i), v = f(i); if (k && v != null) (g[k] = g[k] || []).push(v); }); const o = {}; Object.keys(g).forEach(k => o[k] = Math.round(incProm(g[k]) * 10) / 10); return o; };
   h += '<div class="grid4">' + card('Días de resolución por campo', barras(por(cam, incDias), { color: COL.amarillo, fmt: v => v + ' d' }) + '<div class="nota">Días promedio entre aviso y solución · verde ≤1, amarillo 2–3, rojo &gt;3</div>') +
     card('Días de resolución por departamento', barras(por(dep, incDias), { color: COL.amarillo, fmt: v => v + ' d' })) +
-    card('Tiempo de respuesta (llegada) por campo', barras(por(cam, incMin), { color: COL.naranja, fmt: v => v + ' min' }) + '<div class="nota">Minutos promedio del reporte a la llegada de Seguridad · verde ≤15, amarillo 16–30, rojo &gt;30</div>') +
-    card('Tiempo de respuesta (llegada) por departamento', barras(por(dep, incMin), { color: COL.naranja, fmt: v => v + ' min' })) + '</div>';
+    card('Tiempo de respuesta (llegada) por campo', barras(por(cam, incMinOk), { color: COL.naranja, fmt: v => v + ' min' }) + '<div class="nota">Minutos promedio del reporte a la llegada de Seguridad · verde ≤15, amarillo 16–30, rojo &gt;30</div>') +
+    card('Tiempo de respuesta (llegada) por departamento', barras(por(dep, incMinOk), { color: COL.naranja, fmt: v => v + ' min' })) + '</div>';
   return h;
 }
 
@@ -217,7 +218,7 @@ registrarVista({
     h += indicadoresGestionInc(inc);
     const ps = inc.filter(esPS);
     h += '<div class="grid2">' + (ps.length ? card('Previsión Social por subcategoría', barras(groupCount(ps, subcatPS), { color: COL.verde }) + '<div class="nota">Total Previsión Social: ' + ps.length + ' incidencia(s).</div>') : '') + cardApoyoResumen(inc, true) + '</div>';
-    h += card('Registro de incidencias', tabla([{ t: 'Fecha', f: i => fmtFecha(i.fecha) }, { t: 'Reporte → atención', h: 1, f: i => { const m = incMin(i), hh = x => String(x || '').slice(0, 5); if (!i.horaRep && !i.horaLleg) return '—'; return '<span style="white-space:nowrap;color:' + (m == null ? 'inherit' : SEM_COL[semLlegada(m)]) + '">' + (hh(i.horaRep) || '—') + '→' + (hh(i.horaLleg) || '—') + (m == null ? '' : ' · ' + fmtMinInc(m)) + '</span>'; } }, { t: 'Campo', f: i => i.campo }, { t: 'Departamento', f: i => i.depto || '—' }, { t: 'Subcategoría', f: i => subcatPS(i) || '—' }, { t: 'Problema', f: i => i.problema }, { t: 'Peso', h: 1, f: i => pill(pesoDe(i), pesoDe(i) >= 4 ? 'mal' : pesoDe(i) >= 3 ? 'warn' : 'ok') }, { t: 'Autoridad', f: i => { const x = apoyoDe(i); return x ? AUT_ETQ[x.ap] : '—'; } }, { t: 'Ficha', f: i => esc(i.ficha || '—') }, { t: 'Descripción', f: i => i.descripcion || '' }, { t: 'Fotos', h: 1, f: i => { const l = i.fotos || []; if (!l.length) return '—'; const orden = l.filter(f => f.tipo === 'ficha').concat(l.filter(f => f.tipo !== 'ficha')); return orden.slice(0, 2).map(f => `<img class="incfoto" src="${f.data}" data-fotos="${i.id}" loading="lazy" alt="${f.tipo === 'ficha' ? 'Ficha' : 'Evidencia'}" title="Clic para ver las fotos">`).join('') + (l.length > 2 ? ` <button class="mini" data-fotos="${i.id}">+${l.length - 2}</button>` : ''); } }, { t: '', h: 1, f: i => puedeEditar() ? `<button class="mini" data-edit="${i.id}">Editar</button> <button class="mini" data-del="${i.id}">Eliminar</button>` : '' }], inc));
+    h += card('Registro de incidencias', tabla([{ t: 'Fecha', f: i => fmtFecha(i.fecha) }, { t: 'Reporte → atención', h: 1, f: i => { const m = incMinOk(i), hh = x => String(x || '').slice(0, 5); if (!i.horaRep && !i.horaLleg) return '—'; return '<span style="white-space:nowrap;color:' + (m == null ? 'inherit' : SEM_COL[semLlegada(m)]) + '">' + (hh(i.horaRep) || '—') + '→' + (hh(i.horaLleg) || '—') + (m == null ? (incMinRaw(i) != null ? ' · ⚠ revisar hora' : '') : ' · ' + fmtMinInc(m)) + '</span>'; } }, { t: 'Campo', f: i => i.campo }, { t: 'Departamento', f: i => i.depto || '—' }, { t: 'Subcategoría', f: i => subcatPS(i) || '—' }, { t: 'Problema', f: i => i.problema }, { t: 'Peso', h: 1, f: i => pill(pesoDe(i), pesoDe(i) >= 4 ? 'mal' : pesoDe(i) >= 3 ? 'warn' : 'ok') }, { t: 'Autoridad', f: i => { const x = apoyoDe(i); return x ? AUT_ETQ[x.ap] : '—'; } }, { t: 'Ficha', f: i => esc(i.ficha || '—') }, { t: 'Descripción', f: i => i.descripcion || '' }, { t: 'Fotos', h: 1, f: i => { const l = i.fotos || []; if (!l.length) return '—'; const orden = l.filter(f => f.tipo === 'ficha').concat(l.filter(f => f.tipo !== 'ficha')); return orden.slice(0, 2).map(f => `<img class="incfoto" src="${f.data}" data-fotos="${i.id}" loading="lazy" alt="${f.tipo === 'ficha' ? 'Ficha' : 'Evidencia'}" title="Clic para ver las fotos">`).join('') + (l.length > 2 ? ` <button class="mini" data-fotos="${i.id}">+${l.length - 2}</button>` : ''); } }, { t: '', h: 1, f: i => puedeEditar() ? `<button class="mini" data-edit="${i.id}">Editar</button> <button class="mini" data-del="${i.id}">Eliminar</button>` : '' }], inc));
     el.innerHTML = h;
     $$('[data-del]', el).forEach(b => b.onclick = async () => { if (confirm('¿Eliminar esta incidencia?')) { await dbDel('incidencias', b.dataset.del); renderApp(); } });
     $$('[data-fotos]', el).forEach(b => b.onclick = () => {

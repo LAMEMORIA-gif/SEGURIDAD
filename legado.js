@@ -17,7 +17,7 @@
     return {
       id: 'inc_' + (x._ownId || x.num), num: x.num, fecha: diaTs(x.fecha), campo: campoLegado(x.campo), depto: deptoLegado(x.depto), problema: cat,
       peso: x.peso != null ? x.peso : 1, descripcion: x.desc || '', accion: x.sol || '', estatus: x.estatus || '', m: x.m != null ? x.m : undefined, a: x.a != null ? x.a : undefined, punto: x.subcat || x.campoOriginal || '',
-      fAviso: x.f_aviso || '', fSol: x.f_sol || '', horaRep: x.horaRep || '', horaLleg: x.horaLleg || '', ficha: x.ficha || '', fotos: x.fotos && x.fotos.length ? x.fotos : undefined, apoyoManual: x.apoyoManual || undefined, por: x.guardia || undefined, origen: 'legado'
+      fAviso: x.f_aviso || '', fSol: x.f_sol || '', horaRep: x.horaRep || x.hora_reporte || '', horaLleg: x.horaLleg || x.hora_llegada || '', ficha: x.ficha || '', fotos: x.fotos && x.fotos.length ? x.fotos : undefined, apoyoManual: x.apoyoManual || undefined, por: x.guardia || undefined, origen: 'legado'
     };
   }
   function lunesISO(anio, sem) { // lunes de la semana ISO, a las 12:00 hora local
@@ -51,7 +51,7 @@
     (d.incidencias_agregadas || []).forEach(o => out.push(convInc(o, ed['own:' + o._ownId])));
     Object.keys(ed).filter(k => k.startsWith('orig:')).forEach(k => {
       const num = k.slice(5); const base = (existentes || []).find(i => String(i.num) === num);
-      if (base) out.push(Object.assign({}, base, convInc({ num: base.num, cat: base.problema, fecha: isoDia0(base.fecha), campo: base.campo, depto: base.depto, desc: base.descripcion, sol: base.accion, estatus: base.estatus, peso: base.peso, subcat: base.punto }, ed[k])));
+      if (base) out.push(Object.assign({}, base, convInc({ num: base.num, cat: base.problema, fecha: isoDia0(base.fecha), campo: base.campo, depto: base.depto, desc: base.descripcion, sol: base.accion, estatus: base.estatus, peso: base.peso, subcat: base.punto, horaRep: base.horaRep, horaLleg: base.horaLleg, f_aviso: base.fAviso, f_sol: base.fSol }, ed[k])));
     });
     return out;
   }
