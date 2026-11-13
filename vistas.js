@@ -60,7 +60,7 @@ registrarVista({
     riesgos.filter(r => r.nivel === 'Alto' || r.nivel === 'Crítico').forEach(r => al.push([r.nivel === 'Crítico' ? 'mal' : 'warn', `Riesgo ${r.nivel.toLowerCase()} en ${r.campo} (${r.puntos}/100).`]));
     const env = estadoEnvios(), soR = semanasOperativo(12);
     env.filter(a => !a.info && a.hay && a.k !== 'operativo').forEach(a => { const tarde = a.campos.filter(x => x.d == null || x.d > a.lim[1]); if (tarde.length) al.push(['warn', `${a.n.replace(/^\S+ /, '')}: sin datos recientes de ${tarde.map(x => x.campo + (x.d == null ? ' (nunca)' : ' (' + hace(x.d) + ')')).join(', ')}. Pida el archivo al guardia.`]); });
-    { const fl = soR.faltan.filter(f => f.tipo === 'falta' && (!F.campo || f.campo === F.campo)); if (fl.length) { const pc = {}; fl.forEach(f => (pc[f.campo] = pc[f.campo] || []).push(semISO(f.t).sem)); al.push(['mal', 'Control operativo pendiente: ' + Object.entries(pc).map(([c, l]) => c + ' (sem ' + l.join(', ') + ')').join('; ') + '.']); } }
+    { const fl = soR.faltan.filter(f => f.tipo === 'falta' && (!F.campo || f.campo === F.campo)); if (fl.length) { const pc = {}; fl.forEach(f => (pc[f.campo] = pc[f.campo] || []).push(semEmp(f.t))); al.push(['mal', 'Control operativo pendiente: ' + Object.entries(pc).map(([c, l]) => c + ' (sem ' + l.join(', ') + ')').join('; ') + '.']); } }
     h += card('Alertas que requieren atención', al.length ? '<ul class="alertas">' + al.map(a => `<li class="${a[0]}">${esc(a[1])}</li>`).join('') + '</ul>' : '<div class="vacio ok">Sin alertas en este periodo ✔</div>');
     // tabla por campo
     const filas = riesgos.filter(r => !F.campo || r.campo === F.campo);
@@ -382,13 +382,15 @@ function semanasOperativo(maxSem) {
   const faltan = []; filas.forEach(f => f.celdas.forEach(x => { if (!x.r) faltan.push({ campo: f.campo, t: x.t, tipo: 'falta' }); else if (x.dias && x.dias < 7) faltan.push({ campo: f.campo, t: x.t, tipo: 'incompleta', dias: x.dias }); }));
   return { sems, filas, faltan, sueltas };
 }
-const etqSem = t => { const q = semISO(t); return 'Sem ' + q.sem + ' (' + fmtFecha(t).slice(0, 5) + ')'; };
+// Numeración de semanas de la empresa (semana 1 = primer lunes del año; 9 al 15 de noviembre de 2026 = semana 45), la misma de las apps de guardia
+const semEmp = t => { const d = new Date(t); d.setHours(12, 0, 0, 0); const y = d.getFullYear(), d1 = new Date(y, 0, 1, 12).getDay(), off = d1 === 0 ? 1 : (d1 === 1 ? 0 : 8 - d1), pm = new Date(y, 0, 1 + off, 12); return Math.min(52, Math.max(1, Math.floor(Math.round((d - pm) / 864e5) / 7) + 1)); };
+const etqSem = t => 'Sem ' + semEmp(t) + ' (' + fmtFecha(t).slice(0, 5) + ')';
 function htmlSemanasOperativo(so) {
   if (!so.sems.length) return '<p class="nota">Aún no hay capturas de control operativo.</p>';
   const cel = x => !x.r ? '<span class="pill mal">❌ Falta</span>' : x.dias < 7 ? '<span class="pill warn">🟡 ' + x.dias + '/7 días</span>' : '<span class="pill ok">✅</span>';
   const porCampo = {}; so.faltan.forEach(f => (porCampo[f.campo] = porCampo[f.campo] || []).push(f));
   const resumen = Object.keys(porCampo).length ? '<ul class="alertas">' + Object.entries(porCampo).map(([c, l]) => { const fl = l.filter(x => x.tipo === 'falta'), inc = l.filter(x => x.tipo === 'incompleta');
-      return '<li class="' + (fl.length ? 'mal' : 'warn') + '"><b>' + esc(c) + ':</b> ' + [fl.length ? 'faltan ' + fl.map(x => 'sem ' + semISO(x.t).sem).join(', ') : '', inc.length ? 'incompletas ' + inc.map(x => 'sem ' + semISO(x.t).sem + ' (' + x.dias + '/7)').join(', ') : ''].filter(Boolean).join(' · ') + '</li>'; }).join('') + '</ul>'
+      return '<li class="' + (fl.length ? 'mal' : 'warn') + '"><b>' + esc(c) + ':</b> ' + [fl.length ? 'faltan ' + fl.map(x => 'sem ' + semEmp(x.t)).join(', ') : '', inc.length ? 'incompletas ' + inc.map(x => 'sem ' + semEmp(x.t) + ' (' + x.dias + '/7)').join(', ') : ''].filter(Boolean).join(' · ') + '</li>'; }).join('') + '</ul>'
     : '<div class="vacio ok">Todas las semanas de todos los campos están capturadas ✔</div>';
   return resumen + '<div class="tabla-w sinmax"><table class="tabla op-desg"><thead><tr><th>Campo</th>' + so.sems.map(t => '<th>' + etqSem(t) + '</th>').join('') + '</tr></thead><tbody>' +
     so.filas.map(f => '<tr><td>' + esc(f.campo) + '</td>' + f.celdas.map(x => '<td>' + cel(x) + '</td>').join('') + '</tr>').join('') + '</tbody></table></div>' +
