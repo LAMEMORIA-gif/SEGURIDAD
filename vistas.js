@@ -362,7 +362,10 @@ const OP_SIN_CONTROL = ['Galeras Palomas', 'Galeras Empaque', 'Almacén General'
 const camposOperativo = () => nombresCampos().filter(c => !OP_SIN_CONTROL.includes(c));
 // Días capturados de un resumen semanal: solo la app del guardia informa cuántos días llevó; los de los dashboards anteriores
 // (y las capturas hechas en el ERP) vienen completos, aunque no traigan ese dato.
-const diasOperativo = r => { const dc = r && r.raw ? r.raw.diasCapturados : null; return dc != null && dc !== '' && isFinite(+dc) && +dc > 0 ? Math.min(+dc, 7) : 7; };
+// Un resumen semanal recibido cuenta como semana completa: los guardias suelen capturar el total de la semana en un solo registro,
+// así que "días capturados" ya no se usa para marcarla incompleta (solo se informa en el detalle).
+const diasOperativo = r => 7;
+const diasInformados = r => { const dc = r && r.raw ? +r.raw.diasCapturados : 0; return dc > 0 ? dc : 0; };
 // Semanas de control operativo: desde la primera semana registrada (máx. 12 semanas atrás) hasta la semana pasada
 function semanasOperativo(maxSem) {
   const ops = DATA.operativo.filter(x => !OP_SIN_CONTROL.includes(normCampo(x.campo)));
@@ -387,14 +390,14 @@ const semEmp = t => { const d = new Date(t); d.setHours(12, 0, 0, 0); const y = 
 const etqSem = t => 'Sem ' + semEmp(t) + ' (' + fmtFecha(t).slice(0, 5) + ')';
 function htmlSemanasOperativo(so) {
   if (!so.sems.length) return '<p class="nota">Aún no hay capturas de control operativo.</p>';
-  const cel = x => !x.r ? '<span class="pill mal">❌ Falta</span>' : x.dias < 7 ? '<span class="pill warn">🟡 ' + x.dias + '/7 días</span>' : '<span class="pill ok">✅</span>';
+  const cel = x => !x.r ? '<span class="pill mal">❌ Falta</span>' : '<span class="pill ok"' + (diasInformados(x.r) && diasInformados(x.r) < 7 ? ' title="Resumen semanal recibido (el guardia lo capturó en ' + diasInformados(x.r) + ' registro(s))"' : '') + '>✅</span>';
   const porCampo = {}; so.faltan.forEach(f => (porCampo[f.campo] = porCampo[f.campo] || []).push(f));
   const resumen = Object.keys(porCampo).length ? '<ul class="alertas">' + Object.entries(porCampo).map(([c, l]) => { const fl = l.filter(x => x.tipo === 'falta'), inc = l.filter(x => x.tipo === 'incompleta');
       return '<li class="' + (fl.length ? 'mal' : 'warn') + '"><b>' + esc(c) + ':</b> ' + [fl.length ? 'faltan ' + fl.map(x => 'sem ' + semEmp(x.t)).join(', ') : '', inc.length ? 'incompletas ' + inc.map(x => 'sem ' + semEmp(x.t) + ' (' + x.dias + '/7)').join(', ') : ''].filter(Boolean).join(' · ') + '</li>'; }).join('') + '</ul>'
     : '<div class="vacio ok">Todas las semanas de todos los campos están capturadas ✔</div>';
   return resumen + '<div class="tabla-w sinmax"><table class="tabla op-desg"><thead><tr><th>Campo</th>' + so.sems.map(t => '<th>' + etqSem(t) + '</th>').join('') + '</tr></thead><tbody>' +
     so.filas.map(f => '<tr><td>' + esc(f.campo) + '</td>' + f.celdas.map(x => '<td>' + cel(x) + '</td>').join('') + '</tr>').join('') + '</tbody></table></div>' +
-    '<p class="nota">Se revisan las semanas ya cerradas (lunes a domingo), desde la primera captura registrada. La semana en curso no se cuenta como faltante. 🟡 = el guardia envió el resumen con menos de 7 días capturados. Galeras Palomas, Galeras Empaque, Almacén General y Almacén El Milagro Uno no llevan control operativo (no tienen control de acceso).</p>' +
+    '<p class="nota">Se revisan las semanas ya cerradas (lunes a domingo), desde la primera captura registrada. La semana en curso no se cuenta como faltante. ✅ = ya llegó el resumen semanal de ese campo. Galeras Palomas, Galeras Empaque, Almacén General y Almacén El Milagro Uno no llevan control operativo (no tienen control de acceso).</p>' +
     (so.sueltas && so.sueltas.length ? '<details class="nota"><summary><b>' + so.sueltas.length + ' captura(s) no caen en la cuadrícula</b> (campo no reconocido)</summary><ul>' + so.sueltas.slice(0, 40).map(x => '<li>' + esc(x.campo) + ' · semana del ' + fmtFecha(x.fecha) + (x.raw && x.raw.sem ? ' (sem ' + x.raw.sem + '/' + x.raw.anio + ')' : '') + '</li>').join('') + '</ul></details>' : '');
 }
 function htmlEnvios(env) {
@@ -479,7 +482,7 @@ registrarVista({
     if (nb) nb.onclick = () => abrirOp(null);
     $$('[data-edit]', el).forEach(b => b.onclick = () => abrirOp(DATA.operativo.find(x => x.id === b.dataset.edit)));
     $$('[data-ver]', el).forEach(b => b.onclick = () => { const x = DATA.operativo.find(o => o.id === b.dataset.ver); if (!x) return; const v = puntajeOperativo(x), r = x.raw || {};
-      const d = dialogo('Captura de ' + x.campo + ' · semana del ' + fmtFecha(x.fecha), '<p>' + (v == null ? '' : 'Riesgo operativo: ' + pill(Math.round(v) + ' · ' + nivelRiesgo(v)[0], nivelRiesgo(v)[1]) + ' ') + (r._own ? '📱 Capturado por ' + esc(x.guardia || r.guardia || 'el guardia') + (r.diasCapturados ? ' · ' + r.diasCapturados + ' de 7 días' : '') : '') + '</p>' + (r.areaEnfoque ? '<p><b>Área de enfoque:</b> ' + esc(r.areaEnfoque) + '</p>' : '') + (x.obs ? '<p><b>Acción recomendada:</b> ' + esc(x.obs) + '</p>' : '') + (r.observaciones ? '<p><b>Observaciones del guardia:</b> ' + esc(r.observaciones) + '</p>' : '') + opDesgloseHTML([x], false), () => true, 'Cerrar');
+      const d = dialogo('Captura de ' + x.campo + ' · semana del ' + fmtFecha(x.fecha), '<p>' + (v == null ? '' : 'Riesgo operativo: ' + pill(Math.round(v) + ' · ' + nivelRiesgo(v)[0], nivelRiesgo(v)[1]) + ' ') + (r._own ? '📱 Capturado por ' + esc(x.guardia || r.guardia || 'el guardia') + (r.diasCapturados ? ' · resumen semanal recibido' : '') : '') + '</p>' + (r.areaEnfoque ? '<p><b>Área de enfoque:</b> ' + esc(r.areaEnfoque) + '</p>' : '') + (x.obs ? '<p><b>Acción recomendada:</b> ' + esc(x.obs) + '</p>' : '') + (r.observaciones ? '<p><b>Observaciones del guardia:</b> ' + esc(r.observaciones) + '</p>' : '') + opDesgloseHTML([x], false), () => true, 'Cerrar');
       d.firstElementChild.classList.add('ancho'); });
   }
 });

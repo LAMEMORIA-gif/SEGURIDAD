@@ -30,8 +30,10 @@
     return new Date(anio, 0, 1 + off + (sem - 1) * 7, 12).getTime();
   }
   // Los resúmenes de la app OPERATIVO del guardia (marca _exp) sí usan semana ISO; los del dashboard anterior no.
+  // resumen de la app del guardia (aunque sea una versión anterior sin folio): lleva _exp, o diasCapturados, o un _ownId "own_<año>_<semana>_<campo>"
+  const esOpGuardia = o => !!(o && (o._exp || o.diasCapturados != null || /^own_\d{4}_\d+_/.test(String(o._ownId || ''))));
   const fechaSemOp = o => {
-    if (o && o._exp) return lunesISO(o.anio, o.sem);
+    if (esOpGuardia(o)) return lunesISO(o.anio, o.sem);
     const m = o && /^(\d{4})-(\d{2})-(\d{2})/.exec(String(o.fechaInicio || '')); // si la captura trae su fecha de inicio y es lunes, esa manda
     if (m) { const t = new Date(+m[1], +m[2] - 1, +m[3], 12); if (t.getDay() === 1) return t.getTime(); }
     return lunesLegado(o.anio, o.sem);
@@ -85,5 +87,5 @@
     if (e.tipo !== 'alta' && e.tipo !== 'baja') return null;
     return { id: 'rh_pl_' + e.ts, tipo: e.tipo === 'alta' ? 'Alta' : 'Baja', persona: String(e.empleado || '').trim(), campo: '', depto: e.departamento || 'SEGURIDAD', funcion: e.funcion || undefined, genero: e.genero || undefined, fecha: e.fecha ? diaTs(e.fecha) : e.ts, notas: [e.motivo, e.obs].filter(Boolean).join(' · '), origen: 'legado' };
   }
-  g.LEGADO = { esFaltaRH, esVacRH, claveRH, convFaltaRH, convVacRH, convEventoRH, convEval, convLlamada, convEventoPlantilla, campoLegado, deptoLegado, esIncLegado, convInc, esOpLegado, convOp, convArchivoIncidencias, lunesISO, lunesLegado, fechaSemOp };
+  g.LEGADO = { esFaltaRH, esVacRH, claveRH, convFaltaRH, convVacRH, convEventoRH, convEval, convLlamada, convEventoPlantilla, campoLegado, deptoLegado, esIncLegado, convInc, esOpLegado, convOp, convArchivoIncidencias, lunesISO, lunesLegado, fechaSemOp, esOpGuardia };
 })(typeof window !== 'undefined' ? window : globalThis);
