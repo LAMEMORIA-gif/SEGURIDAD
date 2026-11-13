@@ -122,6 +122,17 @@ async function migrarCampos() {
   await cfgSet('campos_v', CAMPOS_VERSION);
 }
 
+// Migración única: las semanas del dashboard anterior de Control operativo (semana 1 = primer lunes del año) se habían guardado
+// como semanas ISO, una semana antes de la real. Se corrige la fecha de esas capturas (las de la app del guardia y las
+// capturadas en el ERP ya son ISO y no se tocan).
+async function migrarFechasOperativoLegado() {
+  if ((cfgGet('op_fecha_v', 0) | 0) >= 1) return;
+  const cambios = [];
+  DATA.operativo.forEach(r => { const w = r.raw; if (r.origen !== 'legado' || !w || w._exp || w.anio == null || w.sem == null) return; const f = LEGADO.lunesLegado(+w.anio, +w.sem); if (f !== r.fecha) { r.fecha = f; cambios.push(r); } });
+  for (const r of cambios) await dbPut('operativo', r);
+  await cfgSet('op_fecha_v', 1);
+}
+
 // ---------- usuarios y sesión ----------
 const ROLES = { gerente: 'Gerente (solo lectura)', supervisor: 'Supervisor (captura e importa)', admin: 'Administrador (todo)' };
 let SESION = null;
@@ -274,6 +285,12 @@ function antiguedad(ts) {
   if (d < 0) { m--; d += new Date(h.getFullYear(), h.getMonth(), 0).getDate(); } if (m < 0) { y--; m += 12; } if (y < 0) { y = 0; m = 0; d = 0; }
   return { years: y, texto: y + ' Años, ' + m + ' Mes(es), ' + d + ' y Dia(s)' };
 }
+function extraerOperativoLegado(html) { // lee CAMPO_RAW del dashboard anterior de Control operativo (el archivo no sale de su equipo)
+  const i = html.indexOf('const CAMPO_RAW'); if (i < 0) return null;
+  const a = html.indexOf('[', i); if (a < 0) return null; let n = 0, j = a, q = false, esc = false;
+  for (; j < html.length; j++) { const ch = html[j]; if (q) { if (esc) esc = false; else if (ch === '\\') esc = true; else if (ch === '"') q = false; continue; } if (ch === '"') q = true; else if (ch === '[') n++; else if (ch === ']') { n--; if (!n) break; } }
+  try { const arr = JSON.parse(html.slice(a, j + 1)); return arr.filter(r => r && r.ubicacion && r.sem != null && r.anio != null); } catch (e) { return null; }
+}
 function extraerPlantillaBaseRH(html) { // lee la lista EMPLEADOS_RAW del dashboard de RH (el archivo no sale de su equipo)
   const i = html.indexOf('EMPLEADOS_RAW'); if (i < 0) return null;
   const a = html.indexOf('[', i); if (a < 0) return null; let n = 0, j = a;
@@ -339,13 +356,14 @@ async function importarArchivos(files) {
     const logArch = { archivo: f.name, fecha: Date.now(), nuevos: 0, actualizados: 0, omitidos: 0, semanas: [] };
     try {
       const txt = await f.text();
+      let data;
       if (/\.html?$/i.test(f.name) || /^\s*<(!doctype|html)/i.test(txt.slice(0, 200))) {
         const base = extraerPlantillaBaseRH(txt);
-        if (base) { await cfgSet('plantilla_base_rh', base); cuenta.plantillaBase = base.length; }
-        else cuenta.error++;
-        continue;
-      }
-      const data = JSON.parse(txt);
+        if (base) { await cfgSet('plantilla_base_rh', base); cuenta.plantillaBase = base.length; continue; }
+        const opl = extraerOperativoLegado(txt); // dashboard anterior de Control operativo: semanas del Excel incrustadas en el archivo
+        if (!opl) { cuenta.error++; continue; }
+        data = opl;
+      } else data = JSON.parse(txt);
       if (data && data._unificado && data.datos) { await restaurarRespaldo(data, false); cuenta.otros++; continue; }
       if (data && Array.isArray(data.incidencias_agregadas)) {
         const nuevas = LEGADO.convArchivoIncidencias(data, DATA.incidencias);
@@ -495,7 +513,7 @@ function dialogo(titulo, html, onOk, okTxt) {
 
 // ---------- arranque / pantalla de acceso ----------
 async function arrancar() {
-  await dbOpen(); await dbLoadAll(); try { await migrarCampos(); } catch (e) { console.error('migrarCampos', e); }
+  await dbOpen(); await dbLoadAll(); try { await migrarCampos(); } catch (e) { console.error('migrarCampos', e); } try { await migrarFechasOperativoLegado(); } catch (e) { console.error('migrarFechasOperativoLegado', e); }
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => { });
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
   mostrarLogin();

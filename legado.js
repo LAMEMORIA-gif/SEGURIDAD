@@ -24,10 +24,17 @@
     const j4 = new Date(anio, 0, 4, 12); const dow = (j4.getDay() + 6) % 7; const lun1 = new Date(anio, 0, 4 - dow, 12);
     return new Date(lun1.getFullYear(), lun1.getMonth(), lun1.getDate() + (sem - 1) * 7, 12).getTime();
   }
+  // El dashboard anterior de Control operativo numera distinto: semana 1 = primer lunes del año (no la semana ISO).
+  function lunesLegado(anio, sem) {
+    const d1 = new Date(anio, 0, 1, 12).getDay(), off = d1 === 0 ? 1 : (d1 === 1 ? 0 : 8 - d1);
+    return new Date(anio, 0, 1 + off + (sem - 1) * 7, 12).getTime();
+  }
+  // Los resúmenes de la app OPERATIVO del guardia (marca _exp) sí usan semana ISO; los del dashboard anterior no.
+  const fechaSemOp = o => (o && o._exp) ? lunesISO(o.anio, o.sem) : lunesLegado(o.anio, o.sem);
   function esOpLegado(o) { return !!(o && typeof o === 'object' && o.ubicacion && o.sem != null && o.anio != null && ('rondProg' in o || 'regProg' in o)); }
   function convOp(o) {
     return {
-      id: 'op_' + o.anio + '_' + o.sem + '_' + n(o.ubicacion).replace(/ /g, '_') + (o._ownId ? '_' + String(o._ownId).slice(-6) : ''), fecha: lunesISO(o.anio, o.sem), campo: campoLegado(o.ubicacion), punto: o.ubicacion,
+      id: 'op_' + o.anio + '_' + o.sem + '_' + n(o.ubicacion).replace(/ /g, '_') + (o._ownId ? '_' + String(o._ownId).slice(-6) : ''), fecha: fechaSemOp(o), campo: campoLegado(o.ubicacion), punto: o.ubicacion,
       rondinesProg: o.rondProg, rondinesReal: o.rondReal, accesosReg: o.acasReal, inocuidad: +o.bitTotales ? Math.round((+o.bitTotales - (+o.bitMaltratadas || 0)) / +o.bitTotales * 100) : '', obs: o.accionRecomendada || '', raw: o, origen: 'legado'
     };
   }
@@ -73,5 +80,5 @@
     if (e.tipo !== 'alta' && e.tipo !== 'baja') return null;
     return { id: 'rh_pl_' + e.ts, tipo: e.tipo === 'alta' ? 'Alta' : 'Baja', persona: String(e.empleado || '').trim(), campo: '', depto: e.departamento || 'SEGURIDAD', funcion: e.funcion || undefined, genero: e.genero || undefined, fecha: e.fecha ? diaTs(e.fecha) : e.ts, notas: [e.motivo, e.obs].filter(Boolean).join(' · '), origen: 'legado' };
   }
-  g.LEGADO = { esFaltaRH, esVacRH, claveRH, convFaltaRH, convVacRH, convEventoRH, convEval, convLlamada, convEventoPlantilla, campoLegado, deptoLegado, esIncLegado, convInc, esOpLegado, convOp, convArchivoIncidencias, lunesISO };
+  g.LEGADO = { esFaltaRH, esVacRH, claveRH, convFaltaRH, convVacRH, convEventoRH, convEval, convLlamada, convEventoPlantilla, campoLegado, deptoLegado, esIncLegado, convInc, esOpLegado, convOp, convArchivoIncidencias, lunesISO, lunesLegado, fechaSemOp };
 })(typeof window !== 'undefined' ? window : globalThis);
