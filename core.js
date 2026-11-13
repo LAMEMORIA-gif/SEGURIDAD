@@ -236,7 +236,7 @@ function barras(datos, opc) {
   return '<div class="barras">' + ent.map(([k, v]) => `<div class="barra"><span class="b-et" title="${esc(k)}">${esc(k)}</span><span class="b-pista"><span class="b-rel" style="width:${Math.max(2, v / mx * 100)}%;${opc.color ? 'background:' + opc.color : ''}"></span></span><span class="b-val">${opc.fmt ? opc.fmt(v) : v}</span></div>`).join('') + '</div>';
 }
 function lineas(series, etiquetas, opc) {
-  opc = opc || {}; const W = 560, H = 190, L = 34, R = 10, T = 12, B = 26;
+  opc = opc || {}; const ancho = typeof window !== 'undefined' && window.innerWidth > 900, W = opc.W || (ancho ? 900 : 560), H = opc.H || (ancho ? 130 : 170), L = 30, R = 10, T = 10, B = 22;
   if (!etiquetas.length) return '<div class="vacio">Sin datos</div>';
   const mx = opc.max || Math.max(1, ...series.flatMap(s => s.valores));
   const x = i => L + (etiquetas.length === 1 ? (W - L - R) / 2 : i * (W - L - R) / (etiquetas.length - 1));
@@ -247,7 +247,7 @@ function lineas(series, etiquetas, opc) {
   etiquetas.forEach((e, i) => { if (i % paso === 0) g += `<text x="${x(i)}" y="${H - 8}" text-anchor="${i === 0 ? 'start' : i >= etiquetas.length - paso ? 'end' : 'middle'}" class="gt">${esc(e)}</text>`; });
   series.forEach((s, k) => {
     const pts = s.valores.map((v, i) => x(i) + ',' + y(v)).join(' ');
-    g += `<polyline points="${pts}" fill="none" stroke="${s.color}" stroke-width="2.2"/>` + s.valores.map((v, i) => `<circle cx="${x(i)}" cy="${y(v)}" r="3" fill="${s.color}"><title>${esc(s.nombre)}: ${v} (${esc(etiquetas[i])})</title></circle>`).join('');
+    g += `<polyline points="${pts}" fill="none" stroke="${s.color}" stroke-width="1.8"/>` + s.valores.map((v, i) => `<circle cx="${x(i)}" cy="${y(v)}" r="2.2" fill="${s.color}"><title>${esc(s.nombre)}: ${v} (${esc(etiquetas[i])})</title></circle>`).join('');
   });
   const leyenda = series.length > 1 ? '<div class="leyenda">' + series.map(s => `<span><i style="background:${s.color}"></i>${esc(s.nombre)}</span>`).join('') + '</div>' : '';
   return `<svg viewBox="0 0 ${W} ${H}" class="linea" role="img">${g}</svg>${leyenda}`;
