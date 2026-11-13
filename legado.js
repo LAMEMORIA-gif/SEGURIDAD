@@ -30,7 +30,12 @@
     return new Date(anio, 0, 1 + off + (sem - 1) * 7, 12).getTime();
   }
   // Los resúmenes de la app OPERATIVO del guardia (marca _exp) sí usan semana ISO; los del dashboard anterior no.
-  const fechaSemOp = o => (o && o._exp) ? lunesISO(o.anio, o.sem) : lunesLegado(o.anio, o.sem);
+  const fechaSemOp = o => {
+    if (o && o._exp) return lunesISO(o.anio, o.sem);
+    const m = o && /^(\d{4})-(\d{2})-(\d{2})/.exec(String(o.fechaInicio || '')); // si la captura trae su fecha de inicio y es lunes, esa manda
+    if (m) { const t = new Date(+m[1], +m[2] - 1, +m[3], 12); if (t.getDay() === 1) return t.getTime(); }
+    return lunesLegado(o.anio, o.sem);
+  };
   function esOpLegado(o) { return !!(o && typeof o === 'object' && o.ubicacion && o.sem != null && o.anio != null && ('rondProg' in o || 'regProg' in o)); }
   function convOp(o) {
     return {

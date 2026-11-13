@@ -128,7 +128,7 @@ async function migrarCampos() {
 async function migrarFechasOperativoLegado() {
   if ((cfgGet('op_fecha_v', 0) | 0) >= 1) return;
   const cambios = [];
-  DATA.operativo.forEach(r => { const w = r.raw; if (r.origen !== 'legado' || !w || w._exp || w.anio == null || w.sem == null) return; const f = LEGADO.lunesLegado(+w.anio, +w.sem); if (f !== r.fecha) { r.fecha = f; cambios.push(r); } });
+  DATA.operativo.forEach(r => { const w = r.raw; if (r.origen !== 'legado' || !w || w._exp || w.anio == null || w.sem == null) return; const f = LEGADO.fechaSemOp(w); if (f !== r.fecha) { r.fecha = f; cambios.push(r); } });
   for (const r of cambios) await dbPut('operativo', r);
   await cfgSet('op_fecha_v', 1);
 }

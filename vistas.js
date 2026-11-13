@@ -377,8 +377,8 @@ function semanasOperativo(maxSem) {
     // si hay varias de la misma semana se toma la más completa (más días), y de empate la más reciente
     const r = rs.sort((a, b) => diasOperativo(b) - diasOperativo(a) || (b.importadoEn || 0) - (a.importadoEn || 0))[0];
     return { t, r, dias: r ? diasOperativo(r) : 0 }; }) }));
-  // capturas que quedaron fuera de la cuadrícula (campo no reconocido, semana en curso o más de 12 semanas atrás), para revisarlas
-  const sueltas = ops.filter(x => !usados.has(x.id) && (!campos.includes(normCampo(x.campo)) || x.fecha < sems[0] - 864e5 * 3));
+  // capturas cuyo campo no se reconoce, para revisarlas
+  const sueltas = ops.filter(x => !campos.includes(normCampo(x.campo)));
   const faltan = []; filas.forEach(f => f.celdas.forEach(x => { if (!x.r) faltan.push({ campo: f.campo, t: x.t, tipo: 'falta' }); else if (x.dias && x.dias < 7) faltan.push({ campo: f.campo, t: x.t, tipo: 'incompleta', dias: x.dias }); }));
   return { sems, filas, faltan, sueltas };
 }
@@ -393,7 +393,7 @@ function htmlSemanasOperativo(so) {
   return resumen + '<div class="tabla-w sinmax"><table class="tabla op-desg"><thead><tr><th>Campo</th>' + so.sems.map(t => '<th>' + etqSem(t) + '</th>').join('') + '</tr></thead><tbody>' +
     so.filas.map(f => '<tr><td>' + esc(f.campo) + '</td>' + f.celdas.map(x => '<td>' + cel(x) + '</td>').join('') + '</tr>').join('') + '</tbody></table></div>' +
     '<p class="nota">Se revisan las semanas ya cerradas (lunes a domingo), desde la primera captura registrada. La semana en curso no se cuenta como faltante. 🟡 = el guardia envió el resumen con menos de 7 días capturados. Galeras Palomas, Galeras Empaque, Almacén General y Almacén El Milagro Uno no llevan control operativo (no tienen control de acceso).</p>' +
-    (so.sueltas && so.sueltas.length ? '<details class="nota"><summary><b>' + so.sueltas.length + ' captura(s) no caen en la cuadrícula</b> (campo no reconocido o fuera de las últimas 12 semanas)</summary><ul>' + so.sueltas.slice(0, 40).map(x => '<li>' + esc(x.campo) + ' · semana del ' + fmtFecha(x.fecha) + (x.raw && x.raw.sem ? ' (sem ' + x.raw.sem + '/' + x.raw.anio + ')' : '') + '</li>').join('') + '</ul></details>' : '');
+    (so.sueltas && so.sueltas.length ? '<details class="nota"><summary><b>' + so.sueltas.length + ' captura(s) no caen en la cuadrícula</b> (campo no reconocido)</summary><ul>' + so.sueltas.slice(0, 40).map(x => '<li>' + esc(x.campo) + ' · semana del ' + fmtFecha(x.fecha) + (x.raw && x.raw.sem ? ' (sem ' + x.raw.sem + '/' + x.raw.anio + ')' : '') + '</li>').join('') + '</ul></details>' : '');
 }
 function htmlEnvios(env) {
   const cel = (a, x) => { if (a.k === 'operativo' && OP_SIN_CONTROL.includes(x.campo)) return '<span class="nota">no aplica</span>'; if (x.d == null) return a.info ? '<span class="nota">sin registros</span>' : '<span class="pill mal">nunca</span>'; const cl = x.d <= a.lim[0] ? 'ok' : x.d <= a.lim[1] ? 'warn' : 'mal'; return '<span class="pill ' + (a.info && cl === 'mal' ? 'warn' : cl) + '">' + hace(x.d) + '</span>'; };
@@ -430,7 +430,7 @@ registrarVista({
     const inocPorCampo = Object.fromEntries(Object.entries(_ic).map(([k, v]) => [k, Math.round(sum(v) / v.length)]));
     h += '<div class="grid2">' + card('Cumplimiento de rondines por semana (%)', lineas([{ nombre: '% realizados', color: COL.azul, valores: ks.map(k => sem[k].p ? Math.round(sem[k].r / sem[k].p * 100) : 0) }], ks.map(k => k.slice(8) + '/' + k.slice(5, 7)), { max: 100 })) +
       card('Inocuidad por campo (%)', barras(inocPorCampo, { color: COL.verde, fmt: v => v + '%' })) + '</div>';
-    h += card('Semanas pendientes de control operativo por campo', htmlSemanasOperativo(semanasOperativo(12)));
+    h += card('Semanas pendientes de control operativo por campo', htmlSemanasOperativo(semanasOperativo(20)));
     h += card('Desglose de la captura del guardia (suma del periodo por campo)', op.length ? opDesgloseHTML(op, true) : '<p class="nota">Sin capturas en este periodo. Importe el resumen semanal de la app de Control operativo del guardia en Datos → Importar.</p>');
     h += card('Capturas', tabla([{ t: 'Semana del', f: x => fmtFecha(x.fecha) }, { t: 'Campo', f: x => x.campo }, { t: 'Rondines prog.', f: x => x.rondinesProg }, { t: 'Rondines real.', f: x => x.rondinesReal }, { t: 'Cumpl.', h: 1, f: x => +x.rondinesProg ? pill(pct(+x.rondinesReal, +x.rondinesProg) + '%', semaforo(pct(+x.rondinesReal, +x.rondinesProg), 90, 75)) : '—' }, { t: 'Accesos', f: x => x.accesosReg }, { t: 'Inocuidad %', f: x => x.inocuidad === '' ? '—' : x.inocuidad }, { t: 'Observaciones', f: x => x.obs || '' }, { t: 'Riesgo', h: 1, f: x => { const v = puntajeOperativo(x); return v == null ? '—' : pill(Math.round(v) + ' · ' + nivelRiesgo(v)[0], nivelRiesgo(v)[1]); } }, { t: 'Origen / actualización', f: x => x.raw && x.raw._own ? '📱 App guardia' + (x.guardia || x.raw.guardia ? ' · ' + (x.guardia || x.raw.guardia) : '') + (x.raw.diasCapturados ? ' · ' + x.raw.diasCapturados + '/7 días' : '') + (x.importadoEn ? ' · importado ' + fmtFecha(x.importadoEn) + ' ' + new Date(x.importadoEn).toTimeString().slice(0, 5) : '') + (x.archivo ? ' · ' + x.archivo : '') : x.origen === 'manual' ? '✍️ ERP' + (x.editadoPor || x.por ? ' · ' + (x.editadoPor || x.por) : '') : 'Archivo anterior' }, { t: '', h: 1, f: x => `<button class="mini" data-ver="${x.id}">Ver detalle</button> ` + (puedeEditar() ? `<button class="mini" data-edit="${x.id}">Editar</button> <button class="mini" data-del="${x.id}">Eliminar</button>` : '') }], op));
     let logOp = []; try { logOp = JSON.parse(localStorage.getItem('op_import_log') || '[]'); } catch (e) { }
