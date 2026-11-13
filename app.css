@@ -104,3 +104,14 @@ img.ine{height:30px;width:auto;max-width:56px;object-fit:cover;border-radius:4px
 .qrp .qr-pill.ok{color:var(--ok);border-color:var(--ok);background:transparent}.qrp .qr-pill.warn{color:var(--warn);border-color:var(--warn);background:transparent}.qrp .qr-pill.off{color:var(--tx2);background:transparent}
 .qrp .tabla td{white-space:normal}.qrp .mono{font-family:ui-monospace,Menlo,Consolas,monospace}
 @media(max-width:900px){.qrp .qr-unidad-grid{grid-template-columns:1fr 1fr}}@media(max-width:760px){.qrp .qrp-form{grid-template-columns:1fr 1fr}.qrp .f-half{grid-column:1/-1}}
+
+/* ---- indicadores de gestión de incidencias ---- */
+.dotk{display:inline-block;width:13px;height:13px;border-radius:50%;margin-right:8px;vertical-align:middle}
+.kpis-gestion{margin-bottom:12px}.sec-t{margin:20px 0 4px;font-size:15px}
+.scards{display:grid;grid-template-columns:repeat(auto-fill,minmax(235px,1fr));gap:12px;margin:8px 0 6px}
+.scard{background:var(--panel);border:1px solid var(--borde);border-left:5px solid var(--borde);border-radius:10px;padding:12px;position:relative}
+.scard.ok{border-left-color:#34a853}.scard.warn{border-left-color:#f2c744}.scard.mal{border-left-color:#e5534b}
+.stag{position:absolute;top:10px;right:10px;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;color:#fff}.stag.ok{background:#34a853}.stag.warn{background:#c9a21c}.stag.mal{background:#e5534b}
+.sname{font-weight:700;margin:0 70px 8px 0}.srow{display:flex;justify-content:space-between;gap:8px;font-size:12.5px;padding:3px 0;border-bottom:1px dashed var(--borde)}.srow span{color:var(--tx2)}
+.strend{margin-top:8px;font-size:12px}.strend.up{color:#e5534b}.strend.down{color:#34a853}.strend.flat{color:var(--tx2)}
+.kpis-gestion{grid-template-columns:repeat(4,1fr)}@media(max-width:700px){.kpis-gestion{grid-template-columns:1fr 1fr}}

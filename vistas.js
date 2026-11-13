@@ -130,6 +130,72 @@ registrarVista({
   }
 });
 
+
+// ---------- indicadores de gestión de incidencias (igual que el dashboard original) ----------
+const INC_LLEGADA_VERDE = 15, INC_LLEGADA_AMAR = 30; // minutos
+const incConcluida = i => i.estatus ? i.estatus === 'Concluido' : !!String(i.accion || '').trim();
+const incDias = i => { if (!i.fSol || !i.fecha) return null; const s = new Date(i.fSol + 'T00:00:00').getTime(); return isNaN(s) ? null : Math.max(0, Math.round((s - diaIni(i.fecha)) / 864e5)); };
+const incMin = i => { if (!i.horaRep || !i.horaLleg) return null; const a = String(i.horaRep).split(':').map(Number), b = String(i.horaLleg).split(':').map(Number); if (a.length < 2 || b.length < 2 || a.concat(b).some(isNaN)) return null; let d = b[0] * 60 + b[1] - (a[0] * 60 + a[1]); if (d < 0) d += 1440; return d; };
+const incProm = arr => arr.length ? sum(arr, x => x) / arr.length : null;
+const fmtMinInc = m => m == null ? '—' : (m = Math.round(m), m < 60 ? m + ' min' : Math.floor(m / 60) + ' h ' + String(m % 60).padStart(2, '0') + ' min');
+const fmtP1 = v => (Math.round(v * 10) / 10).toFixed(1) + '%';
+const semRiesgo = p => p >= 70 ? 'mal' : p >= 35 ? 'warn' : 'ok';
+const semDias = d => d == null ? 'warn' : d <= 1 ? 'ok' : d <= 3 ? 'warn' : 'mal';
+const semLlegada = m => m == null ? 'warn' : m <= INC_LLEGADA_VERDE ? 'ok' : m <= INC_LLEGADA_AMAR ? 'warn' : 'mal';
+const semIAS = v => v >= 85 ? 'ok' : v >= 60 ? 'warn' : 'mal';
+const SEM_COL = { ok: '#34a853', warn: '#f2c744', mal: '#e5534b' }, SEM_TXT = { ok: 'VERDE', warn: 'AMARILLO', mal: 'ROJO' };
+function metricasInc(l) {
+  const total = l.length, puntos = sum(l, pesoDe), conc = l.filter(incConcluida).length, cierre = total ? conc / total * 100 : 0;
+  const dias = incProm(l.map(incDias).filter(x => x != null)), min = incProm(l.map(incMin).filter(x => x != null)), nmin = l.map(incMin).filter(x => x != null).length;
+  const ts = dias == null ? null : Math.max(0, Math.min(100, 100 * (1 - Math.max(0, dias - 1) / 4))); // 1 día = 100, 3 días = 50, 5+ = 0
+  return { total, puntos, idx: total ? puntos / (total * 5) * 100 : 0, conc, cierre, dias, min, nmin, pend: total - conc, ias: ts == null ? cierre : (cierre + ts) / 2 };
+}
+const dotK = n => `<span class="dotk" style="background:${SEM_COL[n]}"></span>`;
+function kpisGestionInc(inc) {
+  const m = metricasInc(inc);
+  return '<div class="kpis kpis-gestion">' +
+    kpi(m.total, 'Incidencias', '', m.conc + ' concluidas') + kpi(m.puntos, 'Puntos de riesgo', '', 'suma de peso por catálogo') +
+    kpi(dotK(semRiesgo(m.idx)) + fmtP1(m.idx), 'Índice de riesgo', semRiesgo(m.idx), SEM_TXT[semRiesgo(m.idx)]) +
+    kpi(fmtP1(m.cierre), '% de cierre', '', m.conc + ' de ' + m.total + ' cerradas') +
+    kpi(m.dias == null ? '—' : (Math.round(m.dias * 10) / 10).toFixed(1) + ' d', 'Días de resolución', '', 'promedio, días de aviso a solución') +
+    kpi(dotK(semIAS(m.ias)) + fmtP1(m.ias), 'Índice de atención y/o solución', semIAS(m.ias), SEM_TXT[semIAS(m.ias)] + ' · combina % de cierre y días de resolución') +
+    kpi(m.min == null ? '—' : dotK(semLlegada(m.min)) + fmtMinInc(m.min), 'Tiempo de respuesta (llegada)', m.min == null ? '' : semLlegada(m.min), m.nmin + ' incidencia(s) con hora capturada · verde ≤' + INC_LLEGADA_VERDE + ' min, amarillo ≤' + INC_LLEGADA_AMAR + ' min') +
+    kpi(m.pend, 'Pendientes / en proceso', m.pend ? 'warn' : 'ok', m.total ? fmtP1(m.pend / m.total * 100) + ' del total' : '—') + '</div>';
+}
+function tarjetasSemaforoInc(inc, clave, vacioTxt) {
+  const g = {}; inc.forEach(i => { const k = clave(i); if (k) (g[k] = g[k] || []).push(i); });
+  const ts = inc.map(i => i.fecha), mid = ts.length ? (Math.min(...ts) + Math.max(...ts)) / 2 : 0;
+  const lista = Object.keys(g).map(k => ({ k, l: g[k], m: metricasInc(g[k]) })).sort((a, b) => b.m.idx - a.m.idx);
+  if (!lista.length) return '<div class="vacio">' + (vacioTxt || 'Sin datos') + '</div>';
+  return '<div class="scards">' + lista.map(({ k, l, m }) => {
+    const a = l.filter(i => i.fecha < mid).length, b = l.length - a, tr = b > a ? ['up', '▲ incremento'] : b < a ? ['down', '▼ disminución'] : ['flat', '→ estable'], s = semRiesgo(m.idx);
+    return `<div class="scard ${s}"><span class="stag ${s}">${SEM_TXT[s]}</span><div class="sname">${esc(k)}</div>
+      <div class="srow"><span>Incidencias</span><b>${m.total}</b></div><div class="srow"><span>Índice de riesgo</span><b>${fmtP1(m.idx)}</b></div>
+      <div class="srow"><span>Días de resolución</span><b>${m.dias == null ? '—' : (Math.round(m.dias * 10) / 10).toFixed(1) + ' d'}</b></div>
+      <div class="srow"><span>Tiempo de respuesta (llegada)</span><b style="color:${m.min == null ? 'inherit' : SEM_COL[semLlegada(m.min)]}">${fmtMinInc(m.min)}</b></div>
+      <div class="srow"><span>% cerradas</span><b>${fmtP1(m.cierre)}</b></div><div class="srow"><span>Índice de atención y/o solución</span><b>${fmtP1(m.ias)}</b></div>
+      <div class="strend ${tr[0]}">${tr[1]} (${a}→${b} inc.)</div></div>`; }).join('') + '</div>';
+}
+function indicadoresGestionInc(inc) {
+  let h = '';
+  // comparativo semanal
+  const sem = {}; inc.forEach(i => { const s = semISO(i.fecha), k = s.anio * 100 + s.sem; (sem[k] = sem[k] || { n: 0, p: 0, e: s.sem }).n++; sem[k].p += pesoDe(i); });
+  const ks = Object.keys(sem).map(Number).sort((a, b) => a - b);
+  if (ks.length) {
+    const u = sem[ks[ks.length - 1]].n, pv = ks.length > 1 ? sem[ks[ks.length - 2]].n : null, var_ = pv == null ? '' : (u > pv ? '▲ +' : u < pv ? '▼ ' : '→ ') + (u - pv) + ' vs. semana anterior';
+    h += card('Comparativo semanal de incidencias', lineas([{ nombre: 'Incidencias', color: COL.azul, valores: ks.map(k => sem[k].n) }, { nombre: 'Puntos de riesgo', color: COL.rojo, valores: ks.map(k => sem[k].p) }], ks.map(k => 'S' + sem[k].e)) + '<div class="nota">Líneas = incidencias y puntos de riesgo por semana · ' + (var_ ? 'última semana: ' + var_ : '') + '</div>');
+  }
+  const cam = i => i.campo, dep = i => i.depto;
+  h += '<h3 class="sec-t">Semáforo preventivo por campo</h3><div class="nota">Índice de riesgo = peso acumulado ÷ (incidencias × 5) · verde &lt;35%, amarillo 35–69%, rojo ≥70%</div>' + tarjetasSemaforoInc(inc, cam);
+  h += '<h3 class="sec-t">Semáforo preventivo por departamento</h3><div class="nota">Tendencia compara la 1ª mitad contra la 2ª mitad del periodo visible</div>' + tarjetasSemaforoInc(inc, dep);
+  const por = (clave, f) => { const g = {}; inc.forEach(i => { const k = clave(i), v = f(i); if (k && v != null) (g[k] = g[k] || []).push(v); }); const o = {}; Object.keys(g).forEach(k => o[k] = Math.round(incProm(g[k]) * 10) / 10); return o; };
+  h += '<div class="grid2">' + card('Días de resolución por campo', barras(por(cam, incDias), { color: COL.amarillo, fmt: v => v + ' d' }) + '<div class="nota">Días promedio entre aviso y solución · verde ≤1, amarillo 2–3, rojo &gt;3</div>') +
+    card('Días de resolución por departamento', barras(por(dep, incDias), { color: COL.amarillo, fmt: v => v + ' d' })) + '</div>';
+  h += '<div class="grid2">' + card('Tiempo de respuesta (llegada) por campo', barras(por(cam, incMin), { color: COL.naranja, fmt: v => v + ' min' }) + '<div class="nota">Minutos promedio del reporte a la llegada de Seguridad · verde ≤15, amarillo 16–30, rojo &gt;30</div>') +
+    card('Tiempo de respuesta (llegada) por departamento', barras(por(dep, incMin), { color: COL.naranja, fmt: v => v + ' min' })) + '</div>';
+  return h;
+}
+
 // ============ INCIDENCIAS ============
 const setSel = (s, val) => { if (val == null || val === '') return; if (![...s.options].some(o => o.value === String(val))) { const o = document.createElement('option'); o.value = o.textContent = String(val); s.appendChild(o); } s.value = String(val); };
 const SUBCAT_PS = ['Galeras Palomas', 'Galeras Empaque'];
@@ -144,10 +210,11 @@ registrarVista({
   id: 'incidencias', titulo: 'Incidencias', icono: '⚠️', grupo: 'Seguridad', render(el) {
     const inc = V.incidencias().sort((a, b) => b.fecha - a.fecha);
     const graves = inc.filter(i => pesoDe(i) >= 4);
-    let h = '<div class="kpis">' + kpi(inc.length, 'Incidencias') + kpi(graves.length, 'Graves (peso ≥4)', graves.length ? 'mal' : 'ok') + kpi(sum(inc, pesoDe), 'Puntos de severidad') + kpi(Object.keys(groupCount(inc, i => i.depto)).length, 'Departamentos con incidencias') + kpi(pct(inc.filter(i => (i.fotos || []).some(f => f.tipo === 'ficha')).length, inc.length) + ' %', 'Con foto de la ficha de trabajo', '', inc.filter(i => (i.fotos || []).length).length + ' con fotos') + kpisApoyo(inc) + '</div>';
+    let h = kpisGestionInc(inc) + '<div class="kpis">' + kpi(inc.length, 'Incidencias') + kpi(graves.length, 'Graves (peso ≥4)', graves.length ? 'mal' : 'ok') + kpi(sum(inc, pesoDe), 'Puntos de severidad') + kpi(Object.keys(groupCount(inc, i => i.depto)).length, 'Departamentos con incidencias') + kpi(pct(inc.filter(i => (i.fotos || []).some(f => f.tipo === 'ficha')).length, inc.length) + ' %', 'Con foto de la ficha de trabajo', '', inc.filter(i => (i.fotos || []).length).length + ' con fotos') + kpisApoyo(inc) + '</div>';
     if (puedeEditar()) h += `<div class="barra-acc"><button class="btn" id="nuevaInc">+ Registrar incidencia</button></div>`; else h += soloLectura();
     h += '<div class="grid2">' + card('Por campo', barras(groupCount(inc, i => i.campo), { color: COL.naranja })) + card('Por catálogo de problema', barras(groupCount(inc, i => i.problema), { color: COL.rojo })) +
       card('Por departamento', barras(groupCount(inc, i => i.depto), { color: COL.azul })) + card('Severidad por campo (puntos)', barras(inc.reduce((m, i) => { m[i.campo] = (m[i.campo] || 0) + pesoDe(i); return m; }, {}), { color: COL.rojo })) + '</div>';
+    h += indicadoresGestionInc(inc);
     const ps = inc.filter(esPS);
     if (ps.length) h += card('Previsión Social por subcategoría', barras(groupCount(ps, subcatPS), { color: COL.verde }) + '<div class="nota">Total Previsión Social: ' + ps.length + ' incidencia(s).</div>');
     h += cardApoyoResumen(inc, true);
