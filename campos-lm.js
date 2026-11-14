@@ -23,15 +23,31 @@
     return String(alias).split('+').every(p => n.includes(' ' + norm(p) + ' '));
   }
   // Devuelve el nombre oficial o '' si no se reconoce. 'lista' permite usar una lista personalizada (misma forma).
-  function oficial(txt, lista) {
-    const n = ' ' + norm(txt) + ' ';
-    if (n.trim() === '') return '';
-    const orden = (lista || LISTA).slice().sort((a, b) => (a.p == null ? 50 : a.p) - (b.p == null ? 50 : b.p));
-    for (const c of orden) {
-      if (coincide(n, c.nombre)) return c.nombre;
-      for (const a of (c.alias || [])) if (coincide(n, a)) return c.nombre;
+  // Rendimiento: la lista se ordena y se normaliza una sola vez por lista, y cada texto ya resuelto se recuerda
+  // (antes se rehacía todo por cada registro y la app se congelaba con miles de datos).
+  const _prep = new WeakMap();
+  function preparar(lista) {
+    let p = _prep.get(lista);
+    if (!p) {
+      const orden = lista.slice().sort((a, b) => (a.p == null ? 50 : a.p) - (b.p == null ? 50 : b.p));
+      p = { memo: new Map(), reglas: [] };
+      for (const c of orden) {
+        p.reglas.push({ nombre: c.nombre, partes: String(c.nombre).split('+').map(x => ' ' + norm(x) + ' ') });
+        for (const a of (c.alias || [])) p.reglas.push({ nombre: c.nombre, partes: String(a).split('+').map(x => ' ' + norm(x) + ' ') });
+      }
+      _prep.set(lista, p);
     }
-    return '';
+    return p;
+  }
+  function oficial(txt, lista) {
+    const p = preparar(lista || LISTA);
+    const clave = txt == null ? '' : String(txt);
+    const hit = p.memo.get(clave); if (hit !== undefined) return hit;
+    const n = ' ' + norm(clave) + ' ';
+    let r = '';
+    if (n.trim() !== '') for (const rg of p.reglas) if (rg.partes.every(x => n.includes(x))) { r = rg.nombre; break; }
+    if (p.memo.size > 20000) p.memo.clear();
+    p.memo.set(clave, r); return r;
   }
   g.CAMPOS_LM = { lista: LISTA, nombres: LISTA.map(c => c.nombre), oficial, norm };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -101,10 +101,15 @@ const getPlantilla = () => cfgGet('plantilla', PLANTILLA_DEF);
 const nombresCampos = () => getCampos().map(c => c.nombre);
 
 // unifica cualquier nombre de ubicación ("Campo Palomas RLM", "Milagro 1"...) al campo oficial
+let _ncLista = null; const _ncMemo = new Map();
 function normCampo(txt) {
-  if (norm(txt) === '') return 'Sin campo';
   const lista = getCampos();
-  return CAMPOS_LM.oficial(txt, lista) || CAMPOS_LM.oficial(txt) || 'Otros';
+  if (lista !== _ncLista) { _ncLista = lista; _ncMemo.clear(); }
+  const k = txt == null ? '' : String(txt);
+  const hit = _ncMemo.get(k); if (hit !== undefined) return hit;
+  const r = norm(k) === '' ? 'Sin campo' : (CAMPOS_LM.oficial(k, lista) || CAMPOS_LM.oficial(k) || 'Otros');
+  if (_ncMemo.size > 20000) _ncMemo.clear();
+  _ncMemo.set(k, r); return r;
 }
 // Migración única al catálogo oficial: renombra campos en los registros ya guardados y repone la lista de campos.
 async function migrarCampos() {
@@ -521,8 +526,21 @@ function dialogo(titulo, html, onOk, okTxt) {
 }
 
 // ---------- arranque / pantalla de acceso ----------
+// Arranque rápido: se carga primero solo la configuración (usuarios) para mostrar el acceso de inmediato;
+// el resto de los datos (rondines, accesos, fotos...) se carga por detrás mientras la persona escribe su PIN.
+let CARGA = null;
 async function arrancar() {
-  await dbOpen(); await dbLoadAll(); try { await migrarCampos(); } catch (e) { console.error('migrarCampos', e); } try { await migrarFechasOperativoLegado(); } catch (e) { console.error('migrarFechasOperativoLegado', e); } try { await migrarHorasLlegadaInc(); } catch (e) { console.error('migrarHorasLlegadaInc', e); }
+  await dbOpen();
+  await new Promise((res, rej) => { const rq = dbTx('config', 'readonly').getAll(); rq.onsuccess = () => { DATA.config = rq.result; res(); }; rq.onerror = () => rej(rq.error); });
+  CARGA = (async () => {
+    await Promise.all(STORES.filter(s => s !== 'config').map(s => new Promise((res, rej) => {
+      const rq = dbTx(s, 'readonly').getAll(); rq.onsuccess = () => { DATA[s] = rq.result; res(); }; rq.onerror = () => rej(rq.error);
+    })));
+    try { await migrarCampos(); } catch (e) { console.error('migrarCampos', e); }
+    try { await migrarFechasOperativoLegado(); } catch (e) { console.error('migrarFechasOperativoLegado', e); }
+    try { await migrarHorasLlegadaInc(); } catch (e) { console.error('migrarHorasLlegadaInc', e); }
+  })();
+  CARGA.catch(e => console.error('carga', e));
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => { });
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
   mostrarLogin();
@@ -544,7 +562,7 @@ function mostrarLogin() {
       if (!u.trim()) { m.textContent = 'Escriba un nombre de usuario.'; return; }
       await crearUsuario(u, p, 'admin');
     }
-    if (await intentarLogin(u, p)) { L.style.display = 'none'; entrarApp(); } else { m.textContent = 'Usuario o PIN incorrectos.'; }
+    if (await intentarLogin(u, p)) { m.textContent = 'Cargando datos…'; try { await CARGA; } catch (e) { } L.style.display = 'none'; entrarApp(); } else { m.textContent = 'Usuario o PIN incorrectos.'; }
   };
   $('#lGo').onclick = go; L.querySelectorAll('input').forEach(i => i.onkeydown = e => { if (e.key === 'Enter') go(); });
 }
