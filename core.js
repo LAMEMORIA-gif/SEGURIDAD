@@ -276,8 +276,72 @@ const semaforo = (v, verde, amar) => v >= verde ? 'ok' : v >= amar ? 'warn' : 'm
 const claveMov = r => [r.tipo, norm(r.persona), isoDia(r.fecha), r.fechaFin ? isoDia(r.fechaFin) : ''].join('|');
 const claveLlam = l => [norm(l.guardia), isoDia(l.fecha), norm(l.motivo)].join('|');
 const claveEvSem = e => [norm(e.guardia), e.anio, e.sem].join('|');
+// ---------- unificación de nombres de guardias ----------
+// Una misma persona aparece escrita de varias formas ("ARNULFO COLLAZO", "Arnulfo collazo", "Arnulfo Collazo Rico",
+// "Collazo Collazo Aurelio"). Se comparan sin mayúsculas, acentos ni partículas (de, del, la...), tolerando una letra
+// de diferencia (b/v, ll/y, doble letra) y un nombre corto se une al largo que lo contiene (si es único).
+const _GPART = new Set(['de', 'del', 'la', 'las', 'los', 'y', 'e']);
+function tokGuardia(n) {
+  const vistos = new Set(), out = [];
+  norm(n).split(' ').forEach(t => { if (!t || _GPART.has(t)) return; t = t.replace(/v/g, 'b').replace(/(.)\1+/g, '$1'); if (!vistos.has(t)) { vistos.add(t); out.push(t); } });
+  return out;
+}
+function _lev1(a, b) { // ¿distancia de edición <= 1?
+  if (a === b) return true; if (Math.abs(a.length - b.length) > 1) return false;
+  let i = 0; while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  if (a.length === b.length) return a.slice(i + 1) === b.slice(i + 1);
+  const [l, s] = a.length > b.length ? [a, b] : [b, a]; return l.slice(i + 1) === s.slice(i);
+}
+const _tokIgual = (a, b) => a === b || (a.length >= 5 && b.length >= 5 && _lev1(a, b));
+const _subconj = (A, B) => A.length > 0 && A.every(a => B.some(b => _tokIgual(a, b)));
+function _tituloNombre(t) { return String(t).trim().split(/\s+/).map((w, i) => { const l = w.toLowerCase(); return (i && _GPART.has(norm(l))) ? l : l.charAt(0).toUpperCase() + l.slice(1); }).join(' '); }
+let _gc = null, _gcSig = '';
+function _nombresGuardiaConocidos() {
+  const cnt = new Map(), add = n => { n = String(n || '').trim().replace(/\s+/g, ' '); if (n) cnt.set(n, (cnt.get(n) || 0) + 1); };
+  DATA.evaluaciones.forEach(x => add(x.guardia)); DATA.rondines.forEach(r => add(r.guardia)); DATA.accesos.forEach(a => add(a.guardiaConfirma));
+  const ros = new Set((cfgGet('guardias', []) || []).map(g => { add(g.nombre); return String(g.nombre || '').trim().replace(/\s+/g, ' '); }));
+  return { cnt, ros };
+}
+function _construirGuardias() {
+  const { cnt, ros } = _nombresGuardiaConocidos();
+  const grp = new Map(); // clave de tokens -> grupo
+  cnt.forEach((n, nom) => { const tk = tokGuardia(nom); if (!tk.length) return; const k = tk.slice().sort().join(' '); let g = grp.get(k); if (!g) grp.set(k, g = { tk, nombres: [] }); g.nombres.push({ nom, n }); });
+  const gs = Array.from(grp.values()), pad = gs.map((_, i) => i);
+  const raiz = i => { while (pad[i] !== i) { pad[i] = pad[pad[i]]; i = pad[i]; } return i; };
+  const unir = (a, b) => { a = raiz(a); b = raiz(b); if (a !== b) pad[b] = a; };
+  for (let a = 0; a < gs.length; a++) for (let b = a + 1; b < gs.length; b++) if (gs[a].tk.length === gs[b].tk.length && _subconj(gs[a].tk, gs[b].tk) && _subconj(gs[b].tk, gs[a].tk)) unir(a, b); // erratas de una letra
+  const orden = gs.map((_, i) => i).sort((a, b) => gs[a].tk.length - gs[b].tk.length);
+  orden.forEach(a => {
+    if (gs[a].tk.length < 2) return; const roots = new Set();
+    gs.forEach((g, b) => { if (g.tk.length > gs[a].tk.length && _subconj(gs[a].tk, g.tk)) roots.add(raiz(b)); });
+    if (roots.size === 1) unir(Array.from(roots)[0], a); // un nombre corto se une al largo único que lo contiene
+  });
+  const cl = new Map(); gs.forEach((g, i) => { const r = raiz(i); (cl.get(r) || cl.set(r, []).get(r)).push(g); });
+  const mapa = new Map(), canon = [];
+  cl.forEach(gr => {
+    const todos = [].concat(...gr.map(g => g.nombres)), ntk = Math.max(...gr.map(g => g.tk.length));
+    const pt = x => (ros.has(x.nom) ? 1e6 : 0) + (tokGuardia(x.nom).length === ntk ? 1e4 : 0) + (/[a-záéíóúñ]/.test(x.nom) && /[A-ZÁÉÍÓÚÑ]/.test(x.nom) ? 100 : 0) + (/[áéíóúñ]/i.test(x.nom) ? 50 : 0) + x.n;
+    const mej = todos.slice().sort((p, q) => pt(q) - pt(p) || q.nom.length - p.nom.length)[0].nom;
+    const nom = mej.split(' ').every(w => _GPART.has(norm(w)) || /^[A-ZÁÉÍÓÚÑ][a-záéíóúñü]*$/.test(w)) && mej !== mej.toUpperCase() ? mej : _tituloNombre(mej);
+    canon.push({ nom, tk: tokGuardia(nom), variantes: todos.map(x => x.nom) }); todos.forEach(x => mapa.set(x.nom, nom));
+  });
+  return { mapa, canon };
+}
+function guardiaCanon(txt) {
+  const t = String(txt || '').trim().replace(/\s+/g, ' '); if (!t) return t;
+  const sig = DATA.evaluaciones.length + '|' + DATA.rondines.length + '|' + DATA.accesos.length + '|' + (cfgGet('guardias', []) || []).length;
+  if (!_gc || sig !== _gcSig) { _gc = _construirGuardias(); _gcSig = sig; _gc.extra = new Map(); }
+  const hit = _gc.mapa.get(t) || _gc.extra.get(t); if (hit) return hit;
+  const tk = tokGuardia(t); let r = t;
+  if (tk.length >= 2) { const c = _gc.canon.filter(g => _subconj(tk, g.tk)); if (c.length === 1) r = c[0].nom; }
+  _gc.extra.set(t, r); return r;
+}
+const claveG = n => norm(guardiaCanon(n));
+// grupos con más de una escritura (para la herramienta de unificar)
+function gruposGuardiasRepetidos() { guardiaCanon('x'); return _gc.canon.filter(g => g.variantes.length > 1); }
 function nombreCanonico(txt) { // usa la escritura ya existente del nombre (evita "JUAN PEREZ" vs "Juan Pérez")
   const t = String(txt || '').trim(), k = norm(t); if (!k) return t;
+  const g = guardiaCanon(t); if (g && g !== t) return g;
   const rh = DATA.rh.find(x => norm(x.persona) === k), ev = DATA.evaluaciones.find(x => norm(x.guardia) === k), ro = DATA.rondines.find(x => norm(x.guardia) === k);
   return (ro && ro.guardia.trim()) || (ev && ev.guardia) || (rh && rh.persona) || t;
 }

@@ -14,7 +14,7 @@ function nombresGuardias() {
   const s = new Set((typeof getGuardias === 'function' ? getGuardias() : []).map(g => g.nombre));
   DATA.rondines.forEach(r => r.guardia && s.add(r.guardia.trim()));
   DATA.accesos.forEach(a => a.guardiaConfirma && s.add(a.guardiaConfirma.trim()));
-  return Array.from(s).filter(Boolean).sort((a, b) => a.localeCompare(b));
+  return Array.from(new Set(Array.from(s).filter(Boolean).map(guardiaCanon))).sort((a, b) => a.localeCompare(b));
 }
 const pesoDe = i => (i.peso != null ? i.peso : ((getCatalogo().find(c => norm(c.nombre) === norm(i.problema)) || {}).peso || 1));
 const soloLectura = () => puedeEditar() ? '' : '<div class="nota">Su perfil es de solo lectura.</div>';
@@ -94,7 +94,7 @@ registrarVista({
     const ks = Object.keys(dias).sort();
     h += '<div class="grid2">' + card('Cumplimiento por día (%)', lineas([{ nombre: 'Cumplimiento', color: COL.azul, valores: ks.map(k => Math.round(sum(dias[k]) / dias[k].length)) }], ks.map(k => k.slice(8) + '/' + k.slice(5, 7)), { max: 100 })) +
       card('Rondines por campo', barras(groupCount(rs, r => normCampo(r.area)), { color: COL.azul })) + '</div>';
-    const porG = {}; rs.forEach(r => { (porG[r.guardia] = porG[r.guardia] || []).push(cumplimientoRondin(r)); });
+    const porG = {}; rs.forEach(r => { (porG[guardiaCanon(r.guardia)] = porG[guardiaCanon(r.guardia)] || []).push(cumplimientoRondin(r)); });
     const gc = {}; Object.keys(porG).forEach(g => gc[g] = Math.round(sum(porG[g]) / porG[g].length));
     h += '<div class="grid2">' + card('Cumplimiento por guardia (%)', barras(gc, { color: COL.verde, fmt: v => v + '%' })) + card('Rondines por turno', barras(groupCount(rs, r => r.turno), { color: COL.naranja })) + '</div>';
     h += rxCardMapa(rs) + rxCardGaleria(rs) + rxGraficas(rs);
@@ -327,7 +327,7 @@ const manual = v => v !== undefined && v !== null && v !== '';
 function calcSemanal(r) {
   const n = {}; CAMPOS_NUM_EV.forEach(f => n[f] = Number(r[f]) || 0);
   const pctAsis = n.asistencia ? Math.max(0, (n.asistencia - n.retardos - n.inasistencias) / n.asistencia) : 0;
-  const imp = DATA.evaluaciones.filter(l => l.tipo === 'llamada' && norm(l.guardia) === norm(r.guardia) && l.sem === r.sem && (l.anio || r.anio) === r.anio).reduce((s, l) => s + (SEV_IMPACTO[l.severidad] || 1), 0);
+  const imp = DATA.evaluaciones.filter(l => l.tipo === 'llamada' && claveG(l.guardia) === claveG(r.guardia) && l.sem === r.sem && (l.anio || r.anio) === r.anio).reduce((s, l) => s + (SEV_IMPACTO[l.severidad] || 1), 0);
   const e = {
     'Asistencia': manual(r._evalAsistencia) ? +r._evalAsistencia : clampEv(Math.round(1 + pctAsis * 4)),
     'Control de acceso': manual(r._evalControlAcceso) ? +r._evalControlAcceso : 3,
@@ -341,20 +341,20 @@ function calcSemanal(r) {
 registrarVista({
   id: 'desempeno', titulo: 'Desempeño de guardias', icono: '⭐', grupo: 'Personal', render(el) {
     const recs = DATA.evaluaciones.filter(r => r.tipo === 'semanal' && enPeriodo(r.fecha) && enCampo(r.ubicacion)).map(r => Object.assign({}, r, { c: calcSemanal(r) }));
-    const llam = DATA.evaluaciones.filter(l => l.tipo === 'llamada' && enPeriodo(l.fecha) && (!F.campo || recs.some(r => norm(r.guardia) === norm(l.guardia)))).sort((a, b) => b.fecha - a.fecha);
-    const porG = {}; recs.forEach(r => { const k = norm(r.guardia); (porG[k] = porG[k] || { nombre: r.guardia, ubic: r.ubicacion, regs: [] }).regs.push(r); });
+    const llam = DATA.evaluaciones.filter(l => l.tipo === 'llamada' && enPeriodo(l.fecha) && (!F.campo || recs.some(r => claveG(r.guardia) === claveG(l.guardia)))).sort((a, b) => b.fecha - a.fecha);
+    const porG = {}; recs.forEach(r => { const k = claveG(r.guardia); (porG[k] = porG[k] || { nombre: guardiaCanon(r.guardia), ubic: r.ubicacion, regs: [] }).regs.push(r); });
     const gs = Object.values(porG).map(g => {
       const cal = Math.round(sum(g.regs, r => r.c.calif) / g.regs.length * 10) / 10;
       const cats = {}; g.regs.forEach(r => Object.entries(r.c.e).forEach(([k, v]) => { (cats[k] = cats[k] || []).push(v); }));
       const debil = Object.entries(cats).map(([k, v]) => [k, sum(v) / v.length]).sort((a, b) => a[1] - b[1])[0][0];
-      const nll = llam.filter(l => norm(l.guardia) === norm(g.nombre)).length;
+      const nll = llam.filter(l => claveG(l.guardia) === claveG(g.nombre)).length;
       return { nombre: g.nombre, ubic: g.regs.slice().sort((a, b) => b.fecha - a.fecha)[0].ubicacion, sems: g.regs.length, cal, nivel: nivelEv(cal), debil, nll };
     }).sort((a, b) => b.cal - a.cal);
     const prom = gs.length ? Math.round(sum(gs, g => g.cal) / gs.length * 100) / 100 : 0;
     const crit = gs.filter(g => g.cal < 3);
     let h = '<div class="kpis">' + kpi(gs.length, 'Guardias evaluados', '', recs.length + ' evaluaciones semanales') + kpi(gs.length ? prom : '—', 'Calificación promedio (1-5)', gs.length ? semaforo(prom, 4, 3) : '') +
       kpi(crit.length, 'Nivel alto o crítico (<3.0)', crit.length ? 'mal' : 'ok') + kpi(llam.length, 'Llamadas de atención', llam.length ? 'warn' : '') + '</div>';
-    h += puedeEditar() ? '<div class="barra-acc"><button class="btn" id="nuevaEv">+ Captura semanal</button><button class="btn sec" id="nuevaLl">🚩 Llamada de atención</button></div>' : soloLectura();
+    h += puedeEditar() ? '<div class="barra-acc"><button class="btn" id="nuevaEv">+ Captura semanal</button><button class="btn sec" id="nuevaLl">🚩 Llamada de atención</button><button class="btn sec" id="unifG" title="Une los nombres repetidos de una misma persona">🧹 Unificar nombres</button></div>' : soloLectura();
     if (!recs.length) h += '<div class="card warn">No hay evaluaciones en este periodo. Cambie el filtro de Periodo a <b>Todo</b> o importe el archivo evaluacion_guardias_*.json.</div>';
     h += '<div class="nota">Calificación 1-5 = promedio de Asistencia (del % de asistencia capturado), Control de acceso y Trabajo en equipo (manuales, 3 si no se califican) y Llamados de atención (5 menos Leve 1 / Moderada 2 / Grave 3). Nivel: Bajo ≥4, Medio ≥3, Alto ≥2, Crítico &lt;2.</div>';
     if (crit.length) h += card('Guardias que requieren atención', '<ul class="alertas">' + crit.map(g => `<li class="${g.cal < 2 ? 'mal' : 'warn'}"><b>${esc(g.nombre)}</b> (${esc(g.ubic)}) · ${g.cal} · ${g.nivel} — Reforzar ${esc(g.debil)}${g.nll ? '; ' + g.nll + ' llamada(s) de atención' : ''}.</li>`).join('') + '</ul>');
@@ -363,10 +363,26 @@ registrarVista({
     h += '<div class="grid2">' + card('Calificación promedio por semana', lineas([{ nombre: 'Promedio', color: COL.azul, valores: ks.map(k => Math.round(sum(sem[k]) / sem[k].length * 10) / 10) }], ks.map(k => fmtFecha(k).slice(0, 5)), { max: 5 })) +
       card('Calificación por campo', barras(Object.fromEntries(Object.entries(porCampo).map(([k, v]) => [k, Math.round(sum(v) / v.length * 10) / 10])), { color: COL.verde })) + '</div>';
     h += card('Ranking de guardias', tabla([{ t: 'Guardia', f: g => g.nombre }, { t: 'Ubicación', f: g => g.ubic }, { t: 'Semanas', f: g => g.sems }, { t: 'Calificación', h: 1, f: g => pill(g.cal.toFixed(1), claseNivel(g.nivel)) }, { t: 'Nivel', f: g => g.nivel }, { t: 'Área débil', f: g => g.debil }, { t: '🚩', f: g => g.nll || '' }], gs, { max: 200 }));
-    h += card('Llamadas de atención', tabla([{ t: 'Fecha', f: l => fmtFecha(l.fecha) }, { t: 'Guardia', f: l => l.guardia }, { t: 'Severidad', h: 1, f: l => pill(l.severidad, l.severidad === 'Grave' ? 'mal' : l.severidad === 'Moderada' ? 'warn' : 'ok') }, { t: 'Motivo', f: l => l.motivo || '' }, { t: '', h: 1, f: l => puedeEditar() ? `<button class="mini" data-del="${l.id}">Eliminar</button>` : '' }], llam));
+    h += card('Llamadas de atención', tabla([{ t: 'Fecha', f: l => fmtFecha(l.fecha) }, { t: 'Guardia', f: l => guardiaCanon(l.guardia) }, { t: 'Severidad', h: 1, f: l => pill(l.severidad, l.severidad === 'Grave' ? 'mal' : l.severidad === 'Moderada' ? 'warn' : 'ok') }, { t: 'Motivo', f: l => l.motivo || '' }, { t: '', h: 1, f: l => puedeEditar() ? `<button class="mini" data-del="${l.id}">Eliminar</button>` : '' }], llam));
     el.innerHTML = h;
     $$('[data-del]', el).forEach(b => b.onclick = async () => { if (confirm('¿Eliminar esta llamada de atención?')) { await dbDel('evaluaciones', b.dataset.del); renderApp(); } });
     const dl = `<datalist id="dlGu">${nombresGuardias().map(g => `<option value="${esc(g)}">`).join('')}</datalist>`;
+    const ub = $('#unifG', el);
+    if (ub) ub.onclick = () => {
+      const gr = gruposGuardiasRepetidos();
+      if (!gr.length) { toast('No hay nombres repetidos ✔', 'ok'); return; }
+      const d = dialogo('Unificar nombres de guardias', '<p class="nota">Cada grupo es la misma persona escrita de varias formas. Se guardará con el nombre de la derecha (puede corregirlo). Revise que no haya personas distintas juntas y desmarque la casilla de las que no deban unirse.</p>' +
+        gr.map((g, i) => `<div style="border:1px solid var(--borde,#345);border-radius:8px;padding:8px;margin:6px 0"><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-ug="${i}" checked> <span><b>Unir:</b> ${g.variantes.map(esc).join(' · ')}</span></label><input data-un="${i}" value="${esc(g.nom)}" style="width:100%;margin-top:6px"></div>`).join(''),
+        async () => {
+          const mapa = new Map(); gr.forEach((g, i) => { if (d.querySelector(`[data-ug="${i}"]`).checked) { const nn = d.querySelector(`[data-un="${i}"]`).value.trim(); if (nn) g.variantes.forEach(v => mapa.set(v, nn)); } });
+          const cambia = (st, campo) => DATA[st].filter(r => { const v = String(r[campo] || '').trim().replace(/\s+/g, ' '); return mapa.has(v) && r[campo] !== mapa.get(v); });
+          let n = 0;
+          for (const [st, campo] of [['evaluaciones', 'guardia'], ['rondines', 'guardia'], ['accesos', 'guardiaConfirma']]) {
+            const lst = cambia(st, campo); lst.forEach(r => { r[campo] = mapa.get(String(r[campo]).trim().replace(/\s+/g, ' ')); }); if (lst.length) { await dbPutMany(st, lst); n += lst.length; }
+          }
+          _gc = null; toast('Nombres unificados en ' + n + ' registro(s)', 'ok'); renderApp();
+        }, 'Unificar');
+    };
     const nb = $('#nuevaEv', el);
     if (nb) nb.onclick = () => {
       const s5 = (id, vacio) => `<select id="${id}">${vacio ? '<option value="">' + vacio + '</option>' : ''}${[5, 4, 3, 2, 1].map(v => `<option>${v}</option>`).join('')}</select>`;
@@ -379,7 +395,7 @@ registrarVista({
         async d => {
           const g = nombreCanonico($('#eG', d).value.trim()); if (!g) { toast('Escriba el nombre del guardia', 'mal'); return false; }
           const anio = +$('#eAn', d).value, sem = +$('#eSe', d).value;
-          const ex = DATA.evaluaciones.find(x => x.tipo === 'semanal' && norm(x.guardia) === norm(g) && x.sem === sem && x.anio === anio);
+          const ex = DATA.evaluaciones.find(x => x.tipo === 'semanal' && claveG(x.guardia) === claveG(g) && x.sem === sem && x.anio === anio);
           await dbPut('evaluaciones', { id: ex ? ex.id : undefined, tipo: 'semanal', guardia: g, ubicacion: $('#eU', d).value, anio, sem, fecha: LEGADO.lunesISO(anio, sem), asistencia: +$('#eAs', d).value, retardos: +$('#eRe', d).value, inasistencias: +$('#eIn', d).value, permisos: +$('#ePe', d).value, incapacidades: +$('#eIc', d).value, uniforme: +$('#eUn', d).value, imagen: +$('#eIm', d).value, _evalControlAcceso: $('#eCA', d).value, _evalEquipo: $('#eEq', d).value });
           toast('Evaluación guardada'); renderApp();
         });
