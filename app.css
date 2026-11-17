@@ -117,3 +117,8 @@ img.ine{height:30px;width:auto;max-width:56px;object-fit:cover;border-radius:4px
 .kpis-gestion{grid-template-columns:repeat(4,1fr)}@media(max-width:700px){.kpis-gestion{grid-template-columns:1fr 1fr}}
 
 .fila2{display:grid;grid-template-columns:1fr 1fr;gap:10px}.fila2 label{min-width:0}
+
+/* análisis de riesgo: mejoras */
+.rm-spark{display:block}.rm-sel{display:inline-flex;gap:6px;align-items:center;margin:4px 0 8px}
+.rm-heat td.rm-c,.rm-heat td.rm-c0,.rm-heat .rm-tot td{text-align:center}.rm-heat td.rm-c0{color:var(--tx2);opacity:.5}.rm-heat .rm-tot td{border-top:2px solid var(--borde)}
+.rm-heat th.rm-th{height:120px;vertical-align:bottom;padding:4px 2px;min-width:30px}.rm-heat th.rm-th span{writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap;font-size:12px}

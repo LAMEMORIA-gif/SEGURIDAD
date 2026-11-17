@@ -99,9 +99,11 @@ registrarVista({
     ], vis) + `<div class="nota">Método: índice 0-100 = promedio ponderado de Incidencias (35%, severidad por semana; 10 puntos/semana = 100), Rondines (20%, faltante de cumplimiento + huecos), Control operativo (20%, puntuación de riesgo semanal de la captura de campo: accesos, sellos, bitácoras, robos y rondines), Accesos (15%, visitas con tiempo excedido y lista restringida) y Personal (10%, inasistencias por semana). Los componentes sin datos se excluyen y los pesos se reajustan. Niveles: Bajo &lt;25, Medio 25-49, Alto 50-74, Crítico ≥75.</div>`) +
       card('Propuestas de mejora por campo (rondines, control operativo, accesos y personal)', vis.filter(r => r.puntos > 0 || r.incidencias || r.rondines || r.opSem).sort((a, b) => b.puntos - a.puntos).map(r => `<div class="prop"><h4>${esc(r.campo)} ${pill(r.puntos + ' · ' + r.nivel, r.clase)}</h4><ul>${sugerencias(r).map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>`).join('') || '<div class="vacio">Sin datos suficientes en este periodo</div>');
     sec.t4 = sec.t4.replace('<div id="rpPond"></div>', pond);
+    sec.t1 = rmTendenciaHTML() + sec.t1; sec.t4 = rmMapaCalorCard() + sec.t4; sec.t10 = rmComparativoCard(); sec.t6 = sec.t6 + rmAccionesCard();
     hh += rpTabs.map(([id]) => `<div class="rp-sec" id="${id}" ${id === RP_TAB ? '' : 'hidden'}>${sec[id]}</div>`).join('');
     hh += '</div>';
     el.innerHTML = hh;
+    rmBind(el, o);
     $$('.tabs [data-t]', el).forEach(b => b.onclick = () => { RP_TAB = b.dataset.t; $$('.tabs [data-t]', el).forEach(x => x.setAttribute('aria-selected', x === b)); $$('.rp-sec', el).forEach(x => x.hidden = x.id !== RP_TAB); });
     const bc = $('#rpApCsv', el); if (bc) bc.onclick = () => { const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; const fl = [['Fecha', 'Campo', 'Incidencia', 'Autoridad', 'Resultado', 'Estatus']].concat(o.apoyo.lista.map(filaApoyo).map(x => [fmtFecha(x.fecha), x.campo, x.problema, x.autoridad, x.resultado, x.estatus])); descargar('apoyo_policial_' + isoDia(Date.now()) + '.csv', '﻿' + fl.map(f => f.map(q).join(',')).join('\r\n'), 'text/csv;charset=utf-8'); };
     $('#rPrint', el).onclick = () => window.print();
