@@ -13,6 +13,7 @@ const rpIso = ms => new Date(ms).toISOString().slice(0, 10);
 const rpMonday = s => rpIso(rpU(s) - ((new Date(rpU(s)).getUTCDay() + 6) % 7) * 864e5);
 const rp1 = x => Math.round(x * 10) / 10;
 const rpPct = (a, b) => b ? rp1(a / b * 100) : null;
+const rpIdxPuertas = s => rp1(Math.min(s / RIESGO_PUERTAS_SEM, 1) * 100);
 const rpIdx = (p, n) => n ? rp1(p / (n * 5) * 100) : null;
 const rpMl = m => m ? RP_MES[+m.slice(5, 7) - 1] + ' ' + m.slice(0, 4) : '—';
 const rpDl = s => s ? (+s.slice(8, 10)) + ' ' + RP_MES[+s.slice(5, 7) - 1] : '—';
@@ -35,7 +36,7 @@ function rpDatos() {
     RP_OPF.forEach(k => o[k] = +r[k] || 0);
     if (!x.raw) { o.rondProg = +x.rondinesProg || 0; o.rondReal = +x.rondinesReal || 0; }
     o.prog = o.regProg + o.visProg + o.provProg + o.saludosEsp + o.vehProg; o.real = o.regReal + o.visReal + o.provReal + o.saludosReal + o.vehReal;
-    o.dec = o.golosinas + o.cigarros + o.articulos + o.drogas + o.sinFicha + o.envasesVidrio; return o;
+    o.dec = o.golosinas + o.cigarros + o.articulos + o.drogas + o.envasesVidrio; return o;
   }).sort((a, b) => a.inicio < b.inicio ? -1 : a.inicio > b.inicio ? 1 : (a.campo < b.campo ? -1 : 1));
   return { inc, op };
 }
@@ -49,7 +50,7 @@ function rpCompute() {
   const rondP = rpS(op, r => r.rondProg), rondR = rpS(op, r => r.rondReal), decT = rpS(op, r => r.dec);
   const mallaN = rpS(inc, r => r.m), alcN = rpS(inc, r => r.a);
   const opDesde = op.length ? op[0].inicio : '1970-01-01', opHasta = op.length ? rpIso(rpU(op[op.length - 1].inicio) + 6 * 864e5) : '1970-01-01';
-  const kpi_ = { incidencias: tot, puntos: pts, indice: rpIdx(pts, tot), cerradas: cerr, pct_cierre: rpPct(cerr, tot), abiertas: tot - cerr, ps_n: ps.length, ps_pct: rpPct(ps.length, tot), ps_pts_pct: rpPct(rpS(ps, r => r.peso), pts), malla_n: mallaN, malla_pct: rpPct(mallaN, tot), alc_n: alcN, alc_pct: rpPct(alcN, tot), decomisos: decT, rond_cumpl: rpPct(rondR, rondP), inc_desde: incDesde, inc_hasta: incHasta, op_desde: opDesde, op_hasta: opHasta };
+  const kpi_ = { incidencias: tot, puntos: pts, indice: rpIdx(pts, tot), cerradas: cerr, pct_cierre: rpPct(cerr, tot), abiertas: tot - cerr, ps_n: ps.length, ps_pct: rpPct(ps.length, tot), ps_pts_pct: rpPct(rpS(ps, r => r.peso), pts), malla_n: mallaN, malla_pct: rpPct(mallaN, tot), alc_n: alcN, alc_pct: rpPct(alcN, tot), decomisos: decT, sin_ficha: rpS(op, r => r.sinFicha), puertas: rpS(op, r => r.puertasAbiertas), puertas_sem: op.length ? rp1(rpS(op, r => r.puertasAbiertas) / op.length) : null, idx_puertas: op.length ? rpIdxPuertas(rpS(op, r => r.puertasAbiertas) / op.length) : null, rond_cumpl: rpPct(rondR, rondP), inc_desde: incDesde, inc_hasta: incHasta, op_desde: opDesde, op_hasta: opHasta };
   const byMes = rpGrp(inc, r => r.mes), mesKeys = Object.keys(byMes).sort();
   out.inc_mes_tot = mesKeys.map(m => { const a = byMes[m], p = rpS(a, r => r.peso), c = rpS(a, r => r.cerrada ? 1 : 0); return { mes: m, n: a.length, puntos: p, indice: rpIdx(p, a.length), pct_cierre: rpPct(c, a.length), abiertas: a.length - c }; });
   const cc = {}; inc.forEach(r => cc[r.campo] = (cc[r.campo] || 0) + 1);
@@ -75,7 +76,7 @@ function rpCompute() {
     const ri = inc.filter(r => r.campo === c), ro = op.filter(r => r.campo === c), S = f => rpS(ro, r => r[f]), n = ri.length, p = rpS(ri, r => r.peso), cl = rpS(ri, r => r.cerrada ? 1 : 0), w = ro.length; if (w > maxSem) maxSem = w;
     const l4 = ro.slice(-4), l4p = rpS(l4, r => r.rondProg), l4r = rpS(l4, r => r.rondReal);
     return { campo: c, incidencias: n, puntos: p, indice: rpIdx(p, n), abiertas: n - cl, pct_cierre: rpPct(cl, n), rond_cumpl: rpPct(S('rondReal'), S('rondProg')), nov_corr: rpPct(S('novCorr'), S('novDet')), acc_cumpl: rpPct(S('real'), S('prog')), saludos: rpPct(S('saludosReal'), S('saludosEsp')),
-      puertas_sem: w ? rp1(S('puertasAbiertas') / w) : null, decomisos: S('dec'), decomisos_sem: w ? rp1(S('dec') / w) : null, exceso_sem: w ? rp1(S('excesoVel') / w) : null, bit_maltr_pct: rpPct(S('bitMaltratadas'), S('bitTotales')), semanas_op: w, ultima_sem_op: w ? ro[ro.length - 1].inicio : '—',
+      puertas_sem: w ? rp1(S('puertasAbiertas') / w) : null, puertas: S('puertasAbiertas'), idx_puertas: w ? rpIdxPuertas(S('puertasAbiertas') / w) : null, sin_ficha: S('sinFicha'), sin_ficha_sem: w ? rp1(S('sinFicha') / w) : null, decomisos: S('dec'), decomisos_sem: w ? rp1(S('dec') / w) : null, exceso_sem: w ? rp1(S('excesoVel') / w) : null, bit_maltr_pct: rpPct(S('bitMaltratadas'), S('bitTotales')), semanas_op: w, ultima_sem_op: w ? ro[ro.length - 1].inicio : '—',
       _rond4: rpPct(l4r, l4p), _excT: S('excesoVel'), _sinFicha: S('sinFicha'), _vidrio: S('envasesVidrio'), _robComb: ri.filter(r => r.cat === 'RoboComb' && !r.cerrada).length, _robFruta: ri.filter(r => r.cat === 'RoboFruta').length };
   });
   const decAll = rpS(csum, c => c.decomisos), ref = rpU(incHasta);
@@ -256,7 +257,7 @@ function rpLineasCampo(rows, campos, xk, vk, labelF, max) {
 
 // ---------- vista ----------
 let RP_TAB = 't1';
-const rpTabs = [['t1', 'Resumen'], ['t8', 'Metas y alertas'], ['t2', 'Semanal'], ['t3', 'Mensual'], ['t4', 'Campos y áreas'], ['t5', 'Control operativo'], ['t9', 'Apoyo policial'], ['t6', 'Plan de mejoras'], ['t7', 'Notas de datos']];
+const rpTabs = [['t1', 'Resumen'], ['t8', 'Metas y alertas'], ['t2', 'Semanal'], ['t3', 'Mensual'], ['t4', 'Campos y áreas'], ['t5', 'Control operativo'], ['tsf', 'Sin ficha'], ['tpa', 'Puertas abiertas'], ['t9', 'Apoyo policial'], ['t6', 'Plan de mejoras'], ['t7', 'Notas de datos']];
 const rpTile = (v, l) => `<div class="tile"><span class="v">${v}</span><span class="l">${esc(l)}</span></div>`;
 const rpEst = e => pill(e, e === 'Cumple' ? 'ok' : e === 'Cerca' ? 'warn' : e === 'No cumple' ? 'mal' : '');
 const rpPri = p => `<b class="${p === 'Crítica' ? 'bad' : p === 'Alta' ? 'warn' : ''}">${p}</b>`;
@@ -281,6 +282,16 @@ function rpTabsHTML(o) {
   const opAg = {}; o.op.forEach(r => { const kk = r.inicio + '|' + r.campo; opAg[kk] = opAg[kk] || { inicio: r.inicio, campo: r.campo, dec: 0 }; opAg[kk].dec += r.dec; });
   sec.t5 = '<div class="grid2">' + card('Rondines realizados vs. programados', '<p class="nota">Porcentaje semanal por campo.</p>' + rpLineasCampo(opRond, campos, 'inicio', 'cumpl', rpFd, 100)) + card('Decomisos en accesos', '<p class="nota">Artículos decomisados por semana y campo.</p>' + rpStack(Object.values(opAg), 'inicio', 'campo', 'dec', rpFd)) + '</div>' +
     card('Control operativo por semana', '<p class="nota">Capturas semanales de cada campo, la más reciente primero.</p>' + tabla([{ t: 'Semana del', f: r => rpDl(r.inicio) }, { t: 'Campo', f: r => r.campo }, { t: 'Rondines prog.', f: r => r.rondProg }, { t: 'Rondines real.', f: r => r.rondReal }, { t: 'Evidencia', f: r => r.evidencia }, { t: 'Nov. det.', f: r => r.novDet }, { t: 'Nov. corr.', f: r => r.novCorr }, { t: 'Accesos prog.', f: r => r.prog }, { t: 'Accesos real.', f: r => r.real }, { t: 'Puertas ab.', f: r => r.puertasAbiertas }, { t: 'Sin rev.', f: r => r.accesosSinRev }, { t: 'Decomisos', f: r => r.dec }, { t: 'Exceso vel.', f: r => r.excesoVel }, { t: 'Bitác. tot.', f: r => r.bitTotales }, { t: 'Bitác. mal', f: r => r.bitMaltratadas }], o.op.slice().reverse()));
+  const agr = f => { const m = {}; o.op.forEach(r => { const kk = r.inicio + '|' + r.campo; m[kk] = m[kk] || { inicio: r.inicio, campo: r.campo, v: 0 }; m[kk].v += r[f]; }); return Object.values(m); };
+  const nivP = v => v == null ? '' : v >= 70 ? 'mal' : v >= 35 ? 'warn' : 'ok';
+  sec.tsf = '<div class="kpis">' + kpi(rpFn(k.sin_ficha), 'Personas sin ficha (restricción de acceso)') + kpi(o.op.length ? rp1(k.sin_ficha / o.op.length) : '—', 'Promedio por captura semanal') + '</div>' +
+    '<p class="nota">Son personas a las que se negó o restringió el acceso por no contar con ficha. No se cuentan como decomisos.</p>' +
+    card('Sin ficha por semana y campo', rpStack(agr('sinFicha'), 'inicio', 'campo', 'v', rpFd)) +
+    card('Sin ficha por campo', tabla([{ t: 'Campo', f: c => c.campo }, { t: 'Sin ficha', f: c => rpFn(c.sin_ficha) }, { t: 'Promedio por semana', f: c => c.sin_ficha_sem == null ? '—' : c.sin_ficha_sem }, { t: '% del total', f: c => rpPc(rpPct(c.sin_ficha, k.sin_ficha)) }], o.campos.filter(c => c.sin_ficha || c.semanas_op)));
+  sec.tpa = '<div class="kpis">' + kpi(rpFn(k.puertas), 'Puertas abiertas detectadas') + kpi(k.puertas_sem == null ? '—' : k.puertas_sem, 'Promedio por captura semanal') + kpi(rpPc(k.idx_puertas), 'Índice de riesgo por puertas abiertas', nivelIdx(k.idx_puertas)) + '</div>' +
+    '<p class="nota">Índice de riesgo por puertas abiertas = promedio semanal de puertas abiertas ÷ ' + RIESGO_PUERTAS_SEM + ' (con ' + RIESGO_PUERTAS_SEM + ' o más por semana el índice llega a 100). Verde menos de 35 %, amarillo de 35 a 69.9 % y rojo 70 % o más. Este mismo dato suma 10 de 70 puntos en la puntuación de riesgo semanal de control operativo, que alimenta el índice ponderado por campo.</p>' +
+    card('Puertas abiertas por semana y campo', rpStack(agr('puertasAbiertas'), 'inicio', 'campo', 'v', rpFd)) +
+    card('Índice de riesgo por puertas abiertas por campo', tabla([{ t: 'Campo', f: c => c.campo }, { t: 'Puertas abiertas', f: c => rpFn(c.puertas) }, { t: 'Promedio por semana', f: c => c.puertas_sem == null ? '—' : c.puertas_sem }, { t: 'Índice', h: 1, f: c => c.idx_puertas == null ? '—' : pill(rpPc(c.idx_puertas), nivP(c.idx_puertas)) }], o.campos.filter(c => c.puertas || c.semanas_op)));
   const ra = o.apoyo;
   sec.t9 = card('Intervenciones con policía municipal y guardia civil estatal', `<p class="nota">${esc(textoApoyo(ra))}</p><div class="barra-acc"><button class="btn sec" id="rpApCsv">Descargar registro (CSV)</button></div>`) +
     '<div class="grid2">' + card('Por mes', tabla([{ t: 'Mes', f: x => x.mes }, { t: 'Incidencias', f: x => x.incidencias }, { t: 'Con apoyo', f: x => x.apoyos }, { t: 'Solo municipal', f: x => x.municipal }, { t: 'Solo guardia civil', f: x => x.guardia }, { t: 'Ambas', f: x => x.ambas }, { t: '% incid.', f: x => x.pct + ' %' }], ra.porMes)) +

@@ -1,6 +1,7 @@
 /* Seguridad La Memoria — análisis de riesgo (índice 0-100 por campo) */
 'use strict';
 
+const RIESGO_PUERTAS_SEM = 6; // puertas abiertas por semana que equivalen a riesgo máximo
 const PESOS_RIESGO = { inc: 35, ron: 20, op: 20, acc: 15, rh: 10 };
 // Puntuación de riesgo 0-100 de una captura semanal de control operativo (misma metodología que la app OPERATIVO)
 function puntajeOperativo(x) {
@@ -16,8 +17,9 @@ function puntajeOperativo(x) {
   const pctAccesos = progAcc === 0 ? 0 : realAcc / progAcc, pctSellos = n('trailers') === 0 ? 1 : n('sellosRev') / n('trailers');
   const pctBitacoras = n('bitTotales') === 0 ? 0 : n('bitBuenEstado') / n('bitTotales'), robos = n('roboComb') + n('roboFruta') + n('roboMat');
   const pctRond = n('rondProg') === 0 ? 0 : Math.min(n('rondReal') / n('rondProg'), 1) * 0.5 + (n('rondReal') === 0 ? 0 : Math.min(n('evidencia') / n('rondReal'), 1)) * 0.25 + (n('novDet') === 0 ? 1 : Math.min(n('novCorr') / n('novDet'), 1)) * 0.25;
-  return Math.min(100, Math.round(((1 - pctAccesos) * 20 + (1 - pctSellos) * 5 + (1 - pctBitacoras) * 10 + Math.min(robos / 3, 1) * 15 + (1 - pctRond) * 10) * (100 / 60) * 10) / 10);
+  return Math.min(100, Math.round(((1 - pctAccesos) * 20 + (1 - pctSellos) * 5 + (1 - pctBitacoras) * 10 + Math.min(robos / 3, 1) * 15 + (1 - pctRond) * 10 + Math.min(n('puertasAbiertas') / RIESGO_PUERTAS_SEM, 1) * 10) * (100 / 70) * 10) / 10);
 }
+const nivelIdx = v => v == null ? '' : v >= 70 ? 'mal' : v >= 35 ? 'warn' : 'ok';
 const nivelRiesgo = p => p >= 75 ? ['Crítico', 'crit'] : p >= 50 ? ['Alto', 'mal'] : p >= 25 ? ['Medio', 'warn'] : ['Bajo', 'ok'];
 
 // Calcula el índice para cada campo en el rango [d, h] (ignora el filtro de campo para poder comparar)
@@ -86,7 +88,7 @@ registrarVista({
     hh += `<p class="take">Previsión Social concentra <b>${rpPc(k.ps_pct)}</b> de las incidencias; <b>${rpPc(k.malla_pct)}</b> involucran la malla perimetral y <b>${rpPc(k.alc_pct)}</b> alcohol.</p>`;
     hh += `<p class="take"><b>${o.resumenMA.criticas}</b> alertas críticas y <b>${o.resumenMA.atencion}</b> de atención; <b>${o.resumenMA.cumplen}</b> de <b>${o.resumenMA.total}</b> metas cumplidas. Detalle en la pestaña Metas y alertas.</p>`;
     hh += '<div class="kpis">' + kpi(k.incidencias, 'Incidencias registradas') + kpi(rpPc(k.indice), 'Índice de riesgo (puntos ÷ máximo posible)', k.indice == null ? '' : k.indice >= 70 ? 'mal' : k.indice >= 35 ? 'warn' : 'ok') + kpi(rpPc(k.pct_cierre), 'Casos cerrados') + kpi(rpPc(k.ps_pts_pct), 'Del riesgo está en Previsión Social') +
-      kpi(rpPc(k.rond_cumpl), 'Rondines realizados vs. programados') + kpi(rpFn(k.decomisos), 'Artículos decomisados en accesos') + kpi(rpPc(k.apoyo_pct), 'Incidencias con apoyo de policía municipal o guardia civil') + '</div>';
+      kpi(rpPc(k.rond_cumpl), 'Rondines realizados vs. programados') + kpi(rpFn(k.decomisos), 'Artículos decomisados en accesos', '', 'golosinas, cigarros, artículos, drogas y vidrio') + kpi(rpFn(k.sin_ficha), 'Personas sin ficha (restricción de acceso)') + kpi(rpFn(k.puertas), 'Puertas abiertas', nivelIdx(k.idx_puertas), 'Índice de riesgo ' + rpPc(k.idx_puertas)) + kpi(rpPc(k.apoyo_pct), 'Incidencias con apoyo de policía municipal o guardia civil') + '</div>';
     hh += `<section class="card"><h3>Evaluación general de la seguridad: <span class="${ev.cls}">${esc(ev.nivel)}</span></h3><p class="take">${esc(ev.s)}</p><div class="grid2"><div><h4>Lo que va bien</h4><ul>${ev.ok.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div><div><h4>Lo que preocupa</h4><ul>${ev.bad.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div></div><h4>Recomendación para mejorar</h4><p>Para bajar el riesgo, atender primero estas tres acciones del plan de mejoras (el detalle completo está en esa pestaña):</p><ol>${ev.rec.map(r => `<li>${esc(r.ambito)}: ${esc(r.accion)}</li>`).join('')}</ol></section>`;
     hh += '<div class="tabs" role="tablist">' + rpTabs.map(([id, t]) => `<button role="tab" data-t="${id}" aria-selected="${id === RP_TAB}">${t}</button>`).join('') + '</div>';
     // índice ponderado por campo (rondines, accesos y personal) — se muestra en "Campos y áreas"
