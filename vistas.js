@@ -428,7 +428,8 @@ const OP_FILAS = [
   ['Decomisos y fichas', ['golosinas', 'cigarros', 'articulos', 'drogas', 'envasesVidrio', 'sinFicha']],
   ['Rondines', ['P:rondProg', 'P:rondReal', 'P:novDet', 'acoso', 'faltasResp', 'discusion', 'excesoVel', 'maltratoJorn']],
   ['Inocuidad', ['P:bitTotales', 'bitMaltratadas']]];
-const accesosOp = x => x.raw ? (+x.raw.regReal || 0) + (+x.raw.acasReal || 0) : (+x.accesosReg || 0);
+const accesosTot = r => ['regReal', 'acasReal', 'visReal', 'provReal', 'vehReal'].reduce((t, k) => t + (+r[k] || 0), 0);
+const accesosOp = x => x.raw ? accesosTot(x.raw) : (+x.accesosReg || 0);
 const opRaw = x => { const r = Object.assign({}, x.raw || {}); if (!x.raw) { r.rondProg = +x.rondinesProg || 0; r.rondReal = +x.rondinesReal || 0; r.acasReal = +x.accesosReg || 0; } return r; };
 function opCelda(v, fila) {
   if (fila.startsWith('P:')) { const [p, r] = OP_PARES.find(q => q[0] === fila.slice(2)); const P = v[p] || 0, R = v[r] || 0; if (!P && !R) return '<span class="nota">—</span>'; const c = P ? Math.round(Math.min(R / P, 9.99) * 100) : null; return R + ' / ' + P + (c == null ? '' : ' ' + pill(c + '%', semaforo(c, 90, 75))); }
@@ -512,7 +513,7 @@ registrarVista({
     const rp = sum(op, x => +x.rondinesProg || 0), rr = sum(op, x => +x.rondinesReal || 0);
     const inoc = op.filter(x => x.inocuidad !== '' && x.inocuidad != null);
     const inocP = inoc.length ? Math.round(sum(inoc, x => +x.inocuidad) / inoc.length * 10) / 10 : 0;
-    let h = '<div class="kpis">' + kpi(op.length, 'Capturas semanales') + kpi(rp ? pct(rr, rp) + '%' : '—', 'Rondines realizados vs programados', rp ? semaforo(pct(rr, rp), 90, 75) : '') + kpi(sum(op, accesosOp), 'Accesos registrados', '', 'regionales + acasillados') + kpi(inoc.length ? inocP + '%' : '—', 'Cumplimiento de inocuidad', inoc.length ? semaforo(inocP, 90, 75) : '') + '</div>';
+    let h = '<div class="kpis">' + kpi(op.length, 'Capturas semanales') + kpi(rp ? pct(rr, rp) + '%' : '—', 'Rondines realizados vs programados', rp ? semaforo(pct(rr, rp), 90, 75) : '') + kpi(sum(op, accesosOp), 'Accesos registrados', '', 'regionales + acasillados + visitantes + proveedores + vehiculares') + kpi(inoc.length ? inocP + '%' : '—', 'Cumplimiento de inocuidad', inoc.length ? semaforo(inocP, 90, 75) : '') + '</div>';
     { const T = {}; op.forEach(x => { const r = opRaw(x); Object.keys(OP_ETQ).forEach(k => T[k] = (T[k] || 0) + (+r[k] || 0)); });
       const pts = op.map(puntajeOperativo).filter(v => v != null), rP = pts.length ? Math.round(sum(pts) / pts.length) : null;
       const revP = T.regProg + T.acasProg + T.visProg + T.provProg + T.vehProg, revR = T.regReal + T.acasReal + T.visReal + T.provReal + T.vehReal;
@@ -555,7 +556,7 @@ registrarVista({
           if (ex && !confirm('Ya existe una captura de ' + campo + ' para la semana ' + sem + '. ¿Reemplazarla con esta?')) return false;
           const base = reg || ex || {};
           const inoc = raw.bitTotales ? Math.round((raw.bitTotales - raw.bitMaltratadas) / raw.bitTotales * 100) : '';
-          await dbPut('operativo', { ...base, id: base.id, fecha: ini, campo, punto: campo, rondinesProg: raw.rondProg, rondinesReal: raw.rondReal, accesosReg: (+raw.regReal || 0) + (+raw.acasReal || 0), inocuidad: inoc, obs: $('#oO', d).value.trim(), raw, origen: 'manual', ...(ed || ex ? { editadoPor: SESION.nombre, editadoEn: Date.now() } : { por: SESION.nombre }) });
+          await dbPut('operativo', { ...base, id: base.id, fecha: ini, campo, punto: campo, rondinesProg: raw.rondProg, rondinesReal: raw.rondReal, accesosReg: accesosTot(raw), inocuidad: inoc, obs: $('#oO', d).value.trim(), raw, origen: 'manual', ...(ed || ex ? { editadoPor: SESION.nombre, editadoEn: Date.now() } : { por: SESION.nombre }) });
           if (ex && reg && ex.id !== reg.id) await dbDel('operativo', ex.id);
           toast('Captura guardada'); renderApp();
         }, 'Guardar captura');

@@ -51,7 +51,7 @@
   function convOp(o) {
     return {
       id: 'op_' + o.anio + '_' + o.sem + '_' + n(o.ubicacion).replace(/ /g, '_') + (o._ownId ? '_' + String(o._ownId).slice(-6) : ''), fecha: fechaSemOp(o), campo: campoLegado(o.ubicacion), punto: o.ubicacion,
-      rondinesProg: o.rondProg, rondinesReal: o.rondReal, accesosReg: (+o.regReal || 0) + (+o.acasReal || 0), inocuidad: +o.bitTotales ? Math.round((+o.bitTotales - (+o.bitMaltratadas || 0)) / +o.bitTotales * 100) : '', obs: o.accionRecomendada || '', raw: o, origen: 'legado'
+      rondinesProg: o.rondProg, rondinesReal: o.rondReal, accesosReg: ['regReal', 'acasReal', 'visReal', 'provReal', 'vehReal'].reduce((t, k) => t + (+o[k] || 0), 0), inocuidad: +o.bitTotales ? Math.round((+o.bitTotales - (+o.bitMaltratadas || 0)) / +o.bitTotales * 100) : '', obs: o.accionRecomendada || '', raw: o, origen: 'legado'
     };
   }
   // archivo exportado "incidencias_agregadas": {incidencias_agregadas:[...], ediciones:{'orig:N':{...},'own:id':{...}}}
