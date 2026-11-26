@@ -51,6 +51,7 @@ function rxMapaSVG(rs, opc) {
   let g = `<rect x="0" y="0" width="${W}" height="${H}" rx="8" fill="#0c2070"/>`;
   for (let i = 1; i < 6; i++) g += `<line x1="${i * W / 6}" x2="${i * W / 6}" y1="0" y2="${H}" class="gl" opacity=".35"/>`;
   for (let i = 1; i < 4; i++) g += `<line y1="${i * H / 4}" y2="${i * H / 4}" x1="0" x2="${W}" class="gl" opacity=".35"/>`;
+  if (typeof geoDe === 'function') areas.forEach(a => { const ge = geoDe(a); if (ge) g += `<circle cx="${X(ge).toFixed(1)}" cy="${Y(ge).toFixed(1)}" r="${(ge.radioM / 111320 * esc_).toFixed(1)}" fill="${col(a)}" fill-opacity=".07" stroke="${col(a)}" stroke-opacity=".8" stroke-dasharray="6 4"><title>Geocerca ${esc(a)} · radio ${ge.radioM} m</title></circle>`; });
   rs.forEach(r => {
     const p = (r.ruta || []).filter(x => x.lat != null && x.lng != null); if (p.length < 2) return;
     const paso = Math.ceil(p.length / 600), q = p.filter((_, i) => i % paso === 0 || i === p.length - 1);

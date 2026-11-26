@@ -87,7 +87,7 @@ registrarVista({
     const novs = sum(rs, r => (r.novedades || []).length);
     const falt = rondinesFaltantes().filter(f => !F.campo || f.campo === F.campo);
     let h = '<div class="kpis">' + kpi(rs.length, 'Rondines realizados') + kpi(rs.length ? cumpl + '%' : '—', 'Cumplimiento de puntos', rs.length ? semaforo(cumpl, 90, 75) : '') +
-      kpi(dur.length ? Math.round(sum(dur) / dur.length) + ' min' : '—', 'Duración promedio') + kpi(novs, 'Novedades reportadas') + kpi(falt.length, 'Huecos sin rondín (7 días)', falt.length ? 'mal' : 'ok') + '</div>';
+      kpi(dur.length ? Math.round(sum(dur) / dur.length) + ' min' : '—', 'Duración promedio') + kpi(novs, 'Novedades reportadas') + kpi(falt.length, 'Huecos sin rondín (7 días)', falt.length ? 'mal' : 'ok') + geoKpi(rs) + '</div>';
     if (falt.length) h += card('Rondines no realizados', '<ul class="alertas">' + falt.map(f => `<li class="mal">${esc(f.campo)} · turno ${esc(f.turno)} — sin rondines en los últimos 7 días con datos (precedente: ${f.historico}).</li>`).join('') + '</ul>');
     // cumplimiento por día
     const dias = {}; rs.forEach(r => { const k = isoDia(r.inicio); (dias[k] = dias[k] || []).push(cumplimientoRondin(r)); });
@@ -97,14 +97,14 @@ registrarVista({
     const porG = {}; rs.forEach(r => { (porG[guardiaCanon(r.guardia)] = porG[guardiaCanon(r.guardia)] || []).push(cumplimientoRondin(r)); });
     const gc = {}; Object.keys(porG).forEach(g => gc[g] = Math.round(sum(porG[g]) / porG[g].length));
     h += '<div class="grid2">' + card('Cumplimiento por guardia (%)', barras(gc, { color: COL.verde, fmt: v => v + '%' })) + card('Rondines por turno', barras(groupCount(rs, r => r.turno), { color: COL.naranja })) + '</div>';
-    h += rxCardMapa(rs) + rxCardGaleria(rs) + rxGraficas(rs);
+    h += rxCardMapa(rs) + rxCardGaleria(rs) + rxGraficas(rs) + cardGeocercas();
     h += card('Detalle de rondines', tabla([
       { t: 'Fecha', f: r => fmtFH(r.inicio) }, { t: 'Guardia', f: r => r.guardia }, { t: 'Campo', f: r => normCampo(r.area) }, { t: 'Área', f: r => r.area }, { t: 'Turno', f: r => r.turno || '—' },
       { t: 'Duración', f: r => r.fin ? Math.round((r.fin - r.inicio) / 60000) + ' min' : 'sin cerrar' },
       { t: 'Puntos', f: r => (r.checkpoints || []).filter(c => c.marcado).length + '/' + (r.checkpoints || []).length },
-      { t: 'Cumpl.', h: 1, f: r => { const c = cumplimientoRondin(r); return pill(c + '%', semaforo(c, 90, 75)); } }, { t: 'Novedades', f: r => (r.novedades || []).length }
+      { t: 'Cumpl.', h: 1, f: r => { const c = cumplimientoRondin(r); return pill(c + '%', semaforo(c, 90, 75)); } }, { t: 'Geocerca', h: 1, f: geoPill }, { t: 'Novedades', f: r => (r.novedades || []).length }
     ], rs, { click: 1 }));
-    el.innerHTML = h; bindRondinesExtra(el);
+    el.innerHTML = h; bindRondinesExtra(el); bindGeocercas(el);
     $$('tr.click', el).forEach(tr => tr.onclick = () => abrirRondin(rs[+tr.dataset.i]));
   }
 });
