@@ -177,6 +177,53 @@ function tarjetasSemaforoInc(inc, clave, vacioTxt) {
       <div class="srow"><span>% cerradas</span><b>${fmtP1(m.cierre)}</b></div><div class="srow"><span>Índice de atención y/o solución</span><b>${fmtP1(m.ias)}</b></div>
       <div class="strend ${tr[0]}">${tr[1]} (${a}→${b} inc.)</div></div>`; }).join('') + '</div>';
 }
+
+// ---- Comparativo mes vs mes y variación semana vs semana anterior (incidencias) ----
+const MES_CORTO = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+const varTxt = (d, pct) => (d > 0 ? '▲ +' : d < 0 ? '▼ ' : '→ ') + d + (pct == null ? '' : ' (' + (d > 0 ? '+' : '') + pct + '%)');
+const varCol = d => d > 0 ? COL.rojo : d < 0 ? COL.verde : COL.gris;
+function cardMensualInc(inc) {
+  if (!inc.length) return '';
+  const g = {}; inc.forEach(i => { const d = new Date(i.fecha), k = d.getFullYear() * 12 + d.getMonth(); (g[k] = g[k] || []).push(i); });
+  const ini = Math.min(...Object.keys(g).map(Number)), fin = Math.max(...Object.keys(g).map(Number)), hoy = new Date(), kHoy = hoy.getFullYear() * 12 + hoy.getMonth();
+  const ms = []; for (let k = ini; k <= fin; k++) { const l = g[k] || [], m = l.length ? metricasInc(l) : null; ms.push({ k, y: Math.floor(k / 12), m: k % 12, n: l.length, p: l.reduce((s, i) => s + pesoDe(i), 0), met: m, parcial: k === kHoy }); }
+  ms.forEach((x, i) => { const a = i ? ms[i - 1] : null; x.dn = a ? x.n - a.n : null; x.pn = a && a.n ? Math.round(x.dn / a.n * 100) : null; x.dp = a ? x.p - a.p : null; x.pp = a && a.p ? Math.round(x.dp / a.p * 100) : null; });
+  const W = 900, H = 200, L = 30, R = 10, T = 26, B = 40, mx = Math.max(1, ...ms.map(x => x.n)), bw = (W - L - R) / ms.length, y = v => T + (H - T - B) * (1 - v / mx);
+  let s = ''; for (let i = 0; i <= 4; i++) { const v = mx * i / 4; s += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" class="gl"/><text x="${L - 4}" y="${y(v) + 3}" text-anchor="end" class="gt">${Math.round(v)}</text>`; }
+  ms.forEach((x, i) => {
+    const cx = L + bw * i + bw / 2, w = Math.min(46, bw * 0.6), lab = MES_CORTO[x.m] + ' ' + String(x.y).slice(2) + (x.parcial ? '*' : '');
+    s += `<rect x="${cx - w / 2}" y="${y(x.n)}" width="${w}" height="${Math.max(1, H - B - y(x.n))}" rx="3" fill="${COL.azul}" fill-opacity="${x.parcial ? .45 : 1}"><title>${lab}: ${x.n} incidencias · ${x.p} puntos${x.dn == null ? '' : ' · ' + varTxt(x.dn, x.pn) + ' vs. mes anterior'}</title></rect>` +
+      `<text x="${cx}" y="${y(x.n) - 4}" text-anchor="middle" class="gt" style="fill:var(--tx);font-weight:700">${x.n}</text>` +
+      `<text x="${cx}" y="${H - 24}" text-anchor="middle" class="gt">${lab}</text>` +
+      (x.dn == null ? '' : `<text x="${cx}" y="${H - 10}" text-anchor="middle" class="gt" style="fill:${varCol(x.dn)};font-weight:700">${x.dn > 0 ? '▲' : x.dn < 0 ? '▼' : '→'} ${x.dn > 0 ? '+' : ''}${x.dn}</text>`);
+  });
+  const ult = ms[ms.length - 1], pen = ms.length > 1 ? ms[ms.length - 2] : null;
+  const tr = ms.slice().reverse().map(x => `<tr><td>${MESES[x.m]} ${x.y}${x.parcial ? ' (en curso)' : ''}</td><td>${x.n}</td><td style="color:${x.dn == null ? 'inherit' : varCol(x.dn)}">${x.dn == null ? '—' : varTxt(x.dn, x.pn)}</td><td>${x.p}</td><td style="color:${x.dp == null ? 'inherit' : varCol(x.dp)}">${x.dp == null ? '—' : varTxt(x.dp, x.pp)}</td><td>${x.met ? fmtP1(x.met.idx) : '—'}</td><td>${x.met ? fmtP1(x.met.cierre) : '—'}</td></tr>`).join('');
+  return card('Comparativo mensual de incidencias (mes vs. mes)',
+    `<svg viewBox="0 0 ${W} ${H}" class="linea" role="img" style="max-height:230px">${s}</svg>` +
+    `<div class="nota">Barras = incidencias por mes; debajo, variación contra el mes anterior (<span style="color:${COL.rojo}">▲ rojo = más incidencias</span>, <span style="color:${COL.verde}">▼ verde = menos</span>).${ult.parcial ? ' * Mes en curso: aún incompleto, no es comparable con un mes cerrado.' : ''}${pen && ult.dn != null ? ' Último mes vs. anterior: ' + varTxt(ult.dn, ult.pn) + ' incidencias.' : ''}</div>` +
+    `<div class="tabla-w"><table class="tabla"><thead><tr><th>Mes</th><th>Incidencias</th><th>Variación</th><th>Puntos de riesgo</th><th>Variación</th><th>Índice de riesgo</th><th>% cerradas</th></tr></thead><tbody>${tr}</tbody></table></div>`);
+}
+function cardVarSemanalInc(inc) {
+  if (!inc.length) return '';
+  const ts = inc.map(i => i.fecha), g = {};
+  inc.forEach(i => { const k = lunesDe(i.fecha); (g[k] = g[k] || []).push(i); });
+  const sem = []; for (let t = lunesDe(Math.min(...ts)), fin = lunesDe(Math.max(...ts)); lunesDe(t) <= fin; t += 7 * 864e5) { const k = lunesDe(t), l = g[k] || []; sem.push({ t: k, e: semISO(k).sem, n: l.length, p: l.reduce((s, i) => s + pesoDe(i), 0) }); }
+  if (sem.length < 2) return '';
+  sem.forEach((x, i) => { x.d = i ? x.n - sem[i - 1].n : null; x.dp = i ? x.p - sem[i - 1].p : null; });
+  const dd = sem.filter(x => x.d != null), mx = Math.max(1, ...dd.map(x => Math.abs(x.d))), W = 900, H = 170, L = 30, R = 10, T = 12, B = 24, mid = T + (H - T - B) / 2, alto = (H - T - B) / 2, bw = (W - L - R) / dd.length, paso = Math.ceil(dd.length / 14);
+  let s = `<line x1="${L}" x2="${W - R}" y1="${mid}" y2="${mid}" stroke="#8fb0ff" stroke-width="1"/><text x="${L - 4}" y="${T + 4}" text-anchor="end" class="gt">+${mx}</text><text x="${L - 4}" y="${mid + 3}" text-anchor="end" class="gt">0</text><text x="${L - 4}" y="${H - B + 3}" text-anchor="end" class="gt">-${mx}</text>`;
+  dd.forEach((x, i) => {
+    const cx = L + bw * i + bw / 2, w = Math.min(22, bw * 0.7), h2 = Math.abs(x.d) / mx * alto, yy = x.d >= 0 ? mid - h2 : mid;
+    s += `<rect x="${cx - w / 2}" y="${yy}" width="${w}" height="${Math.max(x.d === 0 ? 1 : 0, h2)}" rx="2" fill="${varCol(x.d)}"><title>Semana ${x.e} (${isoDia(x.t)}): ${x.n} incidencias · ${varTxt(x.d)} vs. semana anterior · ${x.p} puntos (${x.dp > 0 ? '+' : ''}${x.dp})</title></rect>`;
+    if (i % paso === 0) s += `<text x="${cx}" y="${H - 8}" text-anchor="middle" class="gt">S${x.e}</text>`;
+  });
+  const sube = dd.filter(x => x.d > 0).length, baja = dd.filter(x => x.d < 0).length, u = dd[dd.length - 1], u4 = sem.slice(-4), p4 = sem.slice(-8, -4);
+  const prom = a => a.length ? a.reduce((q, x) => q + x.n, 0) / a.length : null, a4 = prom(u4), b4 = prom(p4);
+  return card('Variación semanal de incidencias (semana vs. semana anterior)',
+    `<svg viewBox="0 0 ${W} ${H}" class="linea" role="img" style="max-height:200px">${s}</svg>` +
+    `<div class="nota">Cada barra = incidencias de esa semana menos las de la semana anterior (<span style="color:${COL.rojo}">rojo = aumento</span>, <span style="color:${COL.verde}">verde = disminución</span>). Semanas ISO, contando también las semanas sin incidencias. De ${dd.length} semanas: ${sube} con aumento y ${baja} con disminución. Última semana (S${u.e}): ${u.n} incidencias, ${varTxt(u.d)} vs. la anterior.${a4 != null && b4 != null ? ' Promedio de las últimas 4 semanas: ' + (Math.round(a4 * 10) / 10) + ' contra ' + (Math.round(b4 * 10) / 10) + ' de las 4 previas.' : ''}</div>`);
+}
 function indicadoresGestionInc(inc) {
   let h = '';
   // comparativo semanal
@@ -186,6 +233,7 @@ function indicadoresGestionInc(inc) {
     const u = sem[ks[ks.length - 1]].n, pv = ks.length > 1 ? sem[ks[ks.length - 2]].n : null, var_ = pv == null ? '' : (u > pv ? '▲ +' : u < pv ? '▼ ' : '→ ') + (u - pv) + ' vs. semana anterior';
     h += card('Comparativo semanal de incidencias', lineas([{ nombre: 'Incidencias', color: COL.azul, valores: ks.map(k => sem[k].n) }, { nombre: 'Puntos de riesgo', color: COL.rojo, valores: ks.map(k => sem[k].p) }], ks.map(k => 'S' + sem[k].e)) + '<div class="nota">Líneas = incidencias y puntos de riesgo por semana · ' + (var_ ? 'última semana: ' + var_ : '') + '</div>');
   }
+  h += cardMensualInc(inc) + cardVarSemanalInc(inc);
   const cam = i => i.campo, dep = i => i.depto;
   h += '<h3 class="sec-t">Semáforo preventivo por campo</h3><div class="nota">Índice de riesgo = peso acumulado ÷ (incidencias × 5) · verde &lt;35%, amarillo 35–69%, rojo ≥70%</div>' + tarjetasSemaforoInc(inc, cam);
   h += '<h3 class="sec-t">Semáforo preventivo por departamento</h3><div class="nota">Tendencia compara la 1ª mitad contra la 2ª mitad del periodo visible</div>' + tarjetasSemaforoInc(inc, dep);
